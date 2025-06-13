@@ -4,16 +4,18 @@ import argparse
 import random
 
 ###################### Parameters
-r1 = 0.9
-r0 = 0.1
+r1 = 0.9 #pr that the state will remain unstable, independently of everything else
+r0 = 0.1 #pr that the state will remain stable, independently of everything else
 rho = 0.1 # pr that a package was successfully decoded
 p = 0.5 # pr that we become stable when controler recives a compressed message
 q = 0.9  #pr that we become stable when controler recives a uncompressed message
 lambda1 = 2  # Energy cost for compressed
 lambda2 = 4  # Energy cost for uncompressed
-V_val = 1
+V_val = 1 # a constant multiplied with all lambda, except for cost calculation. this will only
+# effect the next step calculation, but not the calculation of the final cost, so it is only a
+#temporary factor to help calculations
 
-debuggind_mode = 0
+debuggind_mode = 0 #exactly what it sais, 1 = will debug (one step at a time with displaying data)
 
 
 
