@@ -482,12 +482,12 @@ if __name__ == "__main__":
 
 
     ## execute the program
-    #plot_3d_cost_surface(range(0,10), range(0,10), 100, 100)
+    plot_3d_cost_surface(range(0,10), range(0,10), 100, 100)
     # plot_cost_vs_lambda2_with_individual_ns(0,range(0,10),100, 100)
-    # plot_cost_vs_lambda2_with_individual_ns(10,range(0,10), 100, 100)
-    #plot_time_vs_lambda2_with_individual_ns(1,6, range(0,10), 100, 100)
+    #plot_cost_vs_lambda2_with_individual_ns(10,range(0,10), 100, 100)
+    plot_time_vs_lambda2_with_individual_ns(1,6, range(0,10), 100, 100)
 
-    #plot_lyapunov_drift(1,6, 1000, 100, 100)
+    plot_lyapunov_drift(1,6, 1000, 100, 100)
 
     simulate_AoSI(10000)
 
