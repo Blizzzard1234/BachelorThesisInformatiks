@@ -1,12 +1,14 @@
 import numpy as np
 import matplotlib.pyplot as plt
-import argparse
 import random
+from matplotlib.collections import LineCollection
+from matplotlib.lines import Line2D
+import seaborn as sns
 
 ###################### Parameters
 r1 = 0.9 #pr that the state will remain unstable, independently of everything else
 r0 = 0.1 #pr that the state will remain stable, independently of everything else
-rho = 0.1 # pr that a package was successfully decoded
+rho = 0.9 # pr that a package was successfully decoded
 p = 0.5 # pr that we become stable when controler recives a compressed message
 q = 0.9  #pr that we become stable when controler recives a uncompressed message
 lambda1 = 2  # Energy cost for compressed
@@ -14,8 +16,12 @@ lambda2 = 4  # Energy cost for uncompressed
 V_val = 1 # a constant multiplied with all lambda, except for cost calculation. this will only
 # effect the next step calculation, but not the calculation of the final cost, so it is only a
 #temporary factor to help calculations
+stabilityMargine = 0.5
+RANDOM_SEED = 123543 # Change or set to None to disable fixed seeding
+h = 1 # variant exponent
 
-debuggind_mode = 0 #exactly what it sais, 1 = will debug (one step at a time with displaying data)
+
+mode = 3 #0 = debugging, 1 = with G function, 2 = with F function, 3 = with Lyapunov drift
 
 
 
@@ -30,32 +36,29 @@ f = (1 - r0) * ((1 - rho) + rho * (1 - q) )      #stable &  Uncompressed  this i
 
 
 ######################### current stuff
-
+if RANDOM_SEED is not None:
+    rng = random.Random(RANDOM_SEED)
+else:
+    rng = random.Random()
 # this function calculates the next step. it uses the F function
-def calculate_next(st, dt):
+def get_transition_probs(st):
     if st == 0:
-        if dt == 0:
-            prob_increment = 1 - r0
-        elif dt == 1:
-            prob_increment = (1 - r0) * (1 - rho * p)
-        elif dt == 2:
-            prob_increment = (1 - r0) * (1 - rho * q)
-        else:
-            raise ValueError(f"Something went wrong. we are in an invalid state {dt}")
-    elif st > 0:
-        if dt == 0:
-            prob_increment = r1
-        elif dt == 1:
-            prob_increment = r1 * (1 - p * rho)
-        elif dt == 2:
-            prob_increment = r1 * (1 - q * rho)
-        else:
-            raise ValueError(f"Something went wrong. we are in an invalid state {dt}")
+        return {
+            0: 1 - r0,
+            1: (1 - r0) * (1 - rho * p),
+            2: (1 - r0) * (1 - rho * q)
+        }
+    else:
+        return {
+            0: r1,
+            1: r1 * (1 - p * rho),
+            2: r1 * (1 - q * rho)
+        }
 
+
+def stable_unstable(st, dt, prs):
     # Determine the next state based on the calculated probability
-    #TODO seed for determinismus.
-    # TODO save the propabiliry for each type, as well as the overall propability we currently have for stability vs instability in an array
-    if random.random() < prob_increment:
+    if rng.random() < prs[dt]:
         return st + 1
     else:
         return 0
@@ -120,33 +123,34 @@ def determin_next_G(st):
     return optimal_action, g_values
 
 
-def pick_lyapunov(st, history, t):
-    values = {}
-    avg_val = {}
+def pick_lyapunov(st):
 
-    values[0] = calculate_next(st, 0)
-    values[1] = calculate_next(st, 1)
-    values[2] = calculate_next(st, 2)
+
+    values = {}
+    vals = {}
+
+    prs = get_transition_probs(st)
+
+    values[0] = stable_unstable(st, 0, prs)
+    values[1] = stable_unstable(st, 1, prs)
+    values[2] = stable_unstable(st, 2, prs)
 
     ly = V(st)
-    history[0][t] = (V(values[0]) - ly)
-    history[1][t] = (V(values[1]) - ly) + lambda1 * V_val #TODO maybe try finding a variable V value, instead of a constant and see how that works out
-    history[2][t] = (V(values[2]) - ly) + lambda2 * V_val
+    vals[0] = (V(values[0]) - ly) + values[0] * stabilityMargine
+    vals[1] = (V(values[1]) - ly) + lambda1 * V_val + values[1]* stabilityMargine #TODO maybe try finding a variable V value, instead of a constant and see how that works out
+    vals[2] = (V(values[2]) - ly) + lambda2 * V_val + values[2]* stabilityMargine
 
-#TODO history is the same for each, exccept for the last value. so only that last value matters.
-    avg_val[0] = history[0].mean()
-    avg_val[1] = history[1].mean()
-    avg_val[2] = history[2].mean()
 
-    optimal_action = min(avg_val, key=avg_val.get)
 
-    return optimal_action, history
+    optimal_action = min(vals, key=vals.get)
+
+    return optimal_action, prs.copy()
 
 
 
 
 
-def run_sim_1 (numruns = 1000):
+def run_sim (numruns = 1000):
     st = 0
     dt = 0
 
@@ -159,7 +163,9 @@ def run_sim_1 (numruns = 1000):
 
 
         #detirmin if the next interaction stabalizes the system
-        st = calculate_next(st, nextmin)
+        prs = get_transition_probs(st)
+
+        st = stable_unstable(st, nextmin, prs)
 
 
         #tests
@@ -175,37 +181,62 @@ def run_sim_1 (numruns = 1000):
                 if dt != 2:
                     print(f"failure with AoIS: {st}; current action: {dt}, should be 2")
 
-def run_sim (numruns = 1000):
+def run_sim_1 (numruns = 1000):
     S_history = [0]  # Initialize history with the starting state
     action_history = []
     st = 0
 
     for t in range(numruns):
         # 1. Determine the optimal action for the current state S(t)
-        action, action_g_values = determin_next_F(st)
+        action, _ = determin_next_G(st)
         action_history.append(action)
 
         # 2. Calculate the next state S(t+1) based on the chosen action
-        next_S = calculate_next(st, action)
+        prs = get_transition_probs(st)
+
+        next_S = stable_unstable(st, action, prs)
+
+        S_history.append(next_S)
+        st = next_S  # Update current_S for the next iteration
+
+    return S_history, action_history
+
+def run_sim_2 (numruns = 1000):
+    S_history = [0]  # Initialize history with the starting state
+    action_history = []
+    st = 0
+
+    for t in range(numruns):
+        # 1. Determine the optimal action for the current state S(t)
+        action, _ = determin_next_F(st)
+        action_history.append(action)
+
+        # 2. Calculate the next state S(t+1) based on the chosen action
+        prs = get_transition_probs(st)
+
+        next_S = stable_unstable(st, action, prs)
+
         S_history.append(next_S)
         st = next_S  # Update current_S for the next iteration
 
     return S_history, action_history
 
 
-def run_sim_3(num_runs):
 
+
+def run_sim_3(num_runs):
     S_history = [0]  # Initialize history with the starting state
     action_history = []
     st = 0
-    history = np.zeros((3, num_runs)) #FIX ME the history is both wrong, and not necesery.
     for t in range(num_runs):
         # 1. Determine the optimal action for the current state S(t)
-        action, history= pick_lyapunov(st, history, t)
+        action, _= pick_lyapunov(st)
         action_history.append(action)
 
         # 2. Calculate the next state S(t+1) based on the chosen action
-        next_S = calculate_next(st, action)
+        probs = get_transition_probs(st)
+        next_S = stable_unstable(st, action, probs)
+
         S_history.append(next_S)
         st = next_S  # Update current_S for the next iteration
 
@@ -219,8 +250,8 @@ def run_sim_3(num_runs):
 
 #TODO try different variations, including a nested loop part where other values are tries
 # stuff like a * x ** b + h * c with a,b,c as variable loops and h as a constant
-def V(x):  # x = timestep
-    return 0.5 * x ** 2
+def V(x, a = 0.5, b = 2, c = 0):  # x = timestep
+    return a * x ** b + h * c
 
 
 def has_converged(arr):
@@ -251,7 +282,9 @@ def simulate_lyapunov(max_steps):
         nextmin, valu = determin_next_G(st)
 
         # detirmin if the next interaction stabalizes the system
-        st1 = calculate_next(st, nextmin)
+        pr = get_transition_probs(st)
+        st1 = stable_unstable(st, nextmin, pr)
+
         drift = V(st1) - V (st)
         drift_vals[x] = drift
         avg_val[x] = drift_vals.mean()#
@@ -297,50 +330,119 @@ def plot_lyapunov_drift(max_range, n1_range=15, n2_range=25):
     plt.show()
 
 
+def plot_state_distribution(S_states):
+    mean_val = sum(S_states) / len(S_states)
+
+    plt.figure(figsize=(10, 5))
+    sns.histplot(S_states, kde=True, bins=range(min(S_states), max(S_states) + 2),
+                 color='skyblue', edgecolor='black')
+
+    # Add average line
+    plt.axvline(mean_val, color='red', linestyle='--', linewidth=1.5, label=f'Mean = {mean_val:.2f}')
+
+    # Plot styling
+    plt.title("Distribution of Age of System Instability (S(t))", fontsize=14)
+    plt.xlabel("S(t) Value", fontsize=12)
+    plt.ylabel("Frequency", fontsize=12)
+    plt.grid(True, linestyle='--', alpha=0.6)
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
+
+
 if __name__ == "__main__":
-    num_steps = 10000
+    num_steps = 100
 
-    if debuggind_mode == 1:
-        run_sim_1(num_steps)
-    elif debuggind_mode == 2:
-        plot_lyapunov_drift(num_steps)
-    else:
-        n = 2
-        avgs = np.zeros_like(range(0,n), dtype=float)
 
-        for i in range(n):
-            S_states, actions = run_sim(num_steps)
-            avgs[i] = (sum(S_states) / len(S_states))
+    n = 2
+    avgs = np.zeros_like(range(0,n), dtype=float)
 
-        idle_actions = actions.count(0)
-        sparse_actions = actions.count(1)
-        dense_actions = actions.count(2)
+    for i in range(n):
+        if mode == 0:
+            run_sim(num_steps)
 
-        print("\n--- Simulation Summary ---")
-        print(f"Total simulation steps: {num_steps}")
-        print(f"Average Age Of System Instability (ADSI): {avgs[1]:.4f}")
-        print(f"Average Age Of System Instability (ADSI) over {n}: {avgs.mean():.4f}")
-        print(f"Breakdown of actions taken:")
-        print(f"  Idle (0): {idle_actions} ({idle_actions / num_steps:.2%})")
-        print(f"  Sparse Update (1): {sparse_actions} ({sparse_actions / num_steps:.2%})")
-        print(f"  Dense Update (2): {dense_actions} ({dense_actions / num_steps:.2%})")
-        print(f"Cost: {sparse_actions*lambda1 + dense_actions*lambda2}")  #TODO it should also include the cost of it beeing in a bad state, not just communicvation
+        elif mode == 1:
+            S_states, actions = run_sim_1(num_steps)
+        elif mode == 2:
+            S_states, actions = run_sim_2(num_steps)
+        elif mode == 3:
+            S_states, actions = run_sim_3(num_steps)
+        else:
+            raise ValueError("Wrong mode selected.")
+        avgs[i] = (sum(S_states) / len(S_states))
 
-        #TODO for lyapunov, in addition to this, also calculate the cost (st + ld1 + ld2) with st = V(st)
-        # --- Visualize S(t) over Time ---
+    num_instable = 0
 
-        #TODO add the distribution of AOSI with the avg as well as the number of times we have each IOSI
-        try:
-            plt.figure(figsize=(14, 7))
-            plt.plot(range(len(S_states)), S_states, label='S(t) - Age of System Instability', color='royalblue')
-            plt.title('Simulated Age of System Instability (S(t)) Over Time', fontsize=16)
-            plt.xlabel('Time Step', fontsize=12)
-            plt.ylabel('S(t) Value', fontsize=12)
-            plt.grid(True, linestyle='--', alpha=0.7)
-            plt.axhline(y=0, color='red', linestyle=':', linewidth=1, label='S(t) = 0 (Good State)')
-            plt.legend(fontsize=10)
-            plt.tight_layout()
-            plt.show()
-        except Exception as e:
-            print(f"\nError plotting with Matplotlib: {e}")
-            print("Please ensure matplotlib is installed (`pip install matplotlib`) if you want to see the plot.")
+    for i in S_states:
+        if not i == 0:
+            num_instable = num_instable + 1
+
+    idle_actions = actions.count(0)
+    sparse_actions = actions.count(1)
+    dense_actions = actions.count(2)
+
+    print("\n--- Simulation Summary ---")
+    print(f"Total simulation steps: {num_steps}")
+    print(f"Average Age Of System Instability (ADSI): {avgs[1]:.4f}")
+    print(f"Average Age Of System Instability (ADSI) over {n}: {avgs.mean():.4f}")
+    print(f"Breakdown of actions taken:")
+    print(f"  Idle (0): {idle_actions} ({idle_actions / num_steps:.2%})")
+    print(f"  Sparse Update (1): {sparse_actions} ({sparse_actions / num_steps:.2%})")
+    print(f"  Dense Update (2): {dense_actions} ({dense_actions / num_steps:.2%})")
+    print(f"Cost: {sparse_actions*lambda1 + dense_actions*lambda2 + num_instable}")  #TODO it should also include the cost of it beeing in a bad state, not just communicvation
+
+    #TODO for lyapunov, in addition to this, also calculate the cost (st + ld1 + ld2) with st = V(st)
+    # --- Visualize S(t) over Time ---
+
+    #TODO add the distribution of AOSI with the avg as well as the number of times we have each IOSI
+    try:
+        action_colors = {
+            0: 'green',  # Idle
+            1: 'red',  # Compressed
+            2: 'orange'  # Uncompressed
+        }
+
+        # Build segments for LineCollection
+        points = np.array([range(len(S_states)), S_states]).T.reshape(-1, 1, 2)
+        segments = np.concatenate([points[:-1], points[1:]], axis=1)
+
+        # Map each segment to its corresponding action
+        colors = [action_colors[act] for act in actions[:-1]]
+
+        # Create the plot
+        fig, ax = plt.subplots(figsize=(14, 7))
+
+        # Add colored lines per segment
+        lc = LineCollection(segments, colors=colors, linewidth=2.5)
+        ax.add_collection(lc)
+
+        # Overlay the full S(t) curve as a thin line for readability
+        ax.plot(range(len(S_states)), S_states, color='black', linewidth=0.5, label='S(t) Trace')
+
+        # Add horizontal baseline
+        ax.axhline(y=0, color='red', linestyle=':', linewidth=1, label='S(t) = 0 (Good State)')
+
+        # Styling
+        ax.set_title('Simulated Age of System Instability (S(t)) Over Time', fontsize=16)
+        ax.set_xlabel('Time Step', fontsize=12)
+        ax.set_ylabel('S(t) Value', fontsize=12)
+        ax.grid(True, linestyle='--', alpha=0.7)
+        ax.legend(fontsize=10)
+        custom_lines = [
+            Line2D([0], [0], color='green', lw=2, label='Idle (0)'),
+            Line2D([0], [0], color='red', lw=2, label='Compressed (1)'),
+            Line2D([0], [0], color='orange', lw=2, label='Uncompressed (2)')
+        ]
+
+        # Add to the existing legend
+        ax.legend(handles=[*custom_lines,
+                           Line2D([0], [0], color='black', lw=0.5, label='S(t) Trace'),
+                           Line2D([0], [0], color='red', lw=1, linestyle=':', label='S(t) = 0 (Good State)')],
+                  fontsize=10)
+        plt.tight_layout()
+        plt.show()
+    except Exception as e:
+        print(f"\nError plotting with Matplotlib: {e}")
+        print("Please ensure matplotlib is installed (`pip install matplotlib`) if you want to see the plot.")
+
+    plot_state_distribution(S_states)
