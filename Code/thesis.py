@@ -254,8 +254,20 @@ def find_optimal_V():
     for a in np.arange(0, 5, 0.1):  # a value
         for b in range(0, 15, 1):  # integer range is fine
             for c in range(-10, 10, 1):
-                st, _ = run_sim_3(100, a, b, c)
+                st, actions = run_sim_3(100, a, b, c)
+                actions = np.array(actions)
                 st = np.array(st)
+
+                #num_idle = np.count_nonzero(actions == 0)
+                num_comp = np.count_nonzero(actions == 1)
+                num_uncomp = np.count_nonzero(actions == 2)
+                num_instable = 0
+
+                for i in st:
+                    if not i == 0:
+                        num_instable = num_instable + 1
+
+                cost = lambda1 * num_comp + lambda2 * num_uncomp + num_instable
                 mean_val = st.mean()
                 most_common_val = find_most_common(st)
                 results.append({
@@ -263,14 +275,20 @@ def find_optimal_V():
                     'b': b,
                     'c': c,
                     'mean': mean_val,
-                    'most_common': most_common_val
+                    'most_common': most_common_val,
+                    'cost' : cost
                 })
 
-    sorted_results = sorted_results = sorted(results, key=lambda r: r['mean'])
-    for r in sorted_results[:10]:
-        print(f"a={r['a']:.1f}, b={r['b']}, c={r['c']} → mean={r['mean']:.3f}, most_common={r['most_common']}")
+    sorted_results_AoSI = sorted(results, key=lambda r: r['mean'])
+    sorted_results_cost = sorted(results, key=lambda r: r['cost'])
+    print("*Best values by AoSI:")
+    for r in sorted_results_AoSI[:10]:
+        print(f"a, b, c = {r['a']:.1f}, {r['b']}, {r['c']} → mean={r['mean']:.3f}, most_common={r['most_common']}, cost = {r['cost']}")
+    print("\n*Best values by Cost:")
+    for r in sorted_results_cost[:10]:
+        print(f"a, b, c = {r['a']:.1f}, {r['b']}, {r['c']} → mean={r['mean']:.3f}, most_common={r['most_common']}, cost = {r['cost']}")
 
-    return sorted_results
+    return sorted_results_AoSI, sorted_results_cost
 
 
 
@@ -331,7 +349,7 @@ def plot_state_distribution(S_states):
 
 if __name__ == "__main__":
 
-    num_steps = 1004
+    num_steps = 100
 
     if mode < 1:
         if mode == 0:
@@ -345,7 +363,16 @@ if __name__ == "__main__":
 
         n = 2
         avgs = np.zeros_like(range(0,n), dtype=float)
+        #you can run V optimizer and then just copy paste the exact thing here
 
+        #AoSI
+        a, b, c = 4.5, 1, 8 #→ mean=0.317, most_common=0, cost = 298
+        #a, b, c = 3.8, 8, 2 #→ mean=0.366, most_common=0, cost = 270
+        #a, b, c = 4.2, 2, 0 #→ mean=0.366, most_common=0, cost = 284
+        #Cost
+        #a, b, c = 0.0, 11, 0 #→ mean=1.733, most_common=0, cost = 90
+        #a, b, c = 0.2, 0, 8 #→ mean=2.248, most_common=0, cost = 92
+        #a, b, c = 1.6, 0, 3 #→ mean=2.188, most_common=0, cost = 97
         for i in range(n):
 
 
@@ -354,7 +381,7 @@ if __name__ == "__main__":
             elif mode == 2:
                 S_states, actions = run_sim_2(num_steps)
             elif mode == 3:
-                S_states, actions = run_sim_3(num_steps, a = 3.8, b = 8, c = 8)
+                S_states, actions = run_sim_3(num_steps, a = a, b = b, c = c)
             else:
                 raise ValueError("Wrong mode selected.")
             avgs[i] = (sum(S_states) / len(S_states))
@@ -413,7 +440,7 @@ if __name__ == "__main__":
             ax.axhline(y=0, color='red', linestyle=':', linewidth=1, label='S(t) = 0 (Good State)')
 
             # Styling
-            ax.set_title('Simulated Age of System Instability (S(t)) Over Time', fontsize=16)
+            ax.set_title(f'Simulated Age of System Instability (S(t)) Over Time with V(st) = {a}x^{b} + {h}*{c}', fontsize=16)
             ax.set_xlabel('Time Step', fontsize=12)
             ax.set_ylabel('S(t) Value', fontsize=12)
             ax.grid(True, linestyle='--', alpha=0.7)
