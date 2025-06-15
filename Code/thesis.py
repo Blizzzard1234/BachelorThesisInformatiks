@@ -270,7 +270,7 @@ def find_optimal_V():
     for r in sorted_results[:10]:
         print(f"a={r['a']:.1f}, b={r['b']}, c={r['c']} → mean={r['mean']:.3f}, most_common={r['most_common']}")
 
-    return results
+    return sorted_results
 
 
 
@@ -309,65 +309,6 @@ def has_converged(arr):
 
     return pnt
 
-def simulate_lyapunov(max_steps):
-
-
-    st = 0  # 0 = stable; 1 = unstable
-    drift_vals = np.zeros_like(range(0,max_steps), dtype=float)
-    avg_val = np.zeros_like(range(0, max_steps), dtype=float)
-    convergence = -1
-    for x in range(max_steps):
-        nextmin, valu = determin_next_G(st)
-
-        # detirmin if the next interaction stabalizes the system
-        pr = get_transition_probs(st)
-        st1 = stable_unstable(st, nextmin, pr)
-
-        drift = V(st1) - V (st)
-        drift_vals[x] = drift
-        avg_val[x] = drift_vals.mean()#
-        convergence = has_converged(avg_val)
-    return convergence, drift_vals, avg_val
-
-
-
-
-def plot_lyapunov_drift(max_range, n1_range=15, n2_range=25):
-    convergence, drift_vals, avg_val = simulate_lyapunov(max_range)
-
-    avg_values_range = 100
-    stability_vals = np.zeros_like(range(0, avg_values_range), dtype=float)
-
-    for i in range(avg_values_range):
-        stability_vals[i], arr1, arr2 = simulate_lyapunov(500)
-
-    avg_stability = np.mean(stability_vals)
-
-    #bellman = bellman_stability(max_range)
-
-    #scrapped this becauzse its crazy inaccurate
-    #coeffs  = np.polyfit(range(0,max_range), avg_val, deg=10)  #hopefully gets a function that approximates lyap
-    #f = np.poly1d(coeffs)
-    #print(f)
-
-    plt.figure(figsize=(10, 6))
-    plt.plot(range(0,max_range), drift_vals, label='Lyapunov Drift at time t')
-    plt.plot(range(0, max_range), avg_val, label='Mean drift at time t')
-    #plt.plot(range(0, max_range), bellman, label='Bellman stability')
-    if not convergence == -1 and not convergence == max_range:
-        plt.axvline(convergence, color='red', linestyle='--', label=f'Lyapunov stability at {convergence}')
-    plt.axhline(0, color='red', linestyle='--', label='Zero Drift Line')
-    plt.yscale('symlog')
-    plt.title("Lyapunov Drift at time t")
-    plt.suptitle(f'r₀ = {r0}; r₁ = {r1}; ρ = {rho}. Average stability over 100 tries: = {avg_stability}')
-    plt.xlabel("Time Step")
-    plt.ylabel("Drift ΔV(x)")
-    plt.legend()
-    plt.grid(True)
-    plt.tight_layout()
-    plt.show()
-
-
 def plot_state_distribution(S_states):
     mean_val = sum(S_states) / len(S_states)
 
@@ -390,7 +331,7 @@ def plot_state_distribution(S_states):
 
 if __name__ == "__main__":
 
-    num_steps = 100
+    num_steps = 1004
 
     if mode < 1:
         if mode == 0:

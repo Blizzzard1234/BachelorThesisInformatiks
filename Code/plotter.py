@@ -157,7 +157,7 @@ def F_function(n1, n2, un0):
 
 ############################### finding the n1 and n2 values. lambdas have to be given for these since we need either the lambda or the n values
 def find_optimal_thresholds(lambda1_val, lambda2_val, max_n1=15, max_n2=25):
-    global lambda1, lambda2
+    
     lambda1 = lambda1_val
     lambda2 = lambda2_val
 
@@ -300,7 +300,7 @@ def simulate_lyapunov(max_steps):
 #################### Fig 5 for individual lambda 1 values; fast without individual n minimisation
 def plot_cost_vs_lambda2(n1, n2, lambda1_val, lambda2_range):
 
-    global lambda1, lambda2
+    
     costs = []
     lambdas = list(lambda2_range)
     un0 = compute_un0(n1, n2)
@@ -321,7 +321,7 @@ def plot_cost_vs_lambda2(n1, n2, lambda1_val, lambda2_range):
 ################### individual Fig 5 calculation, with percise n calculation
 def plot_cost_vs_lambda2_with_individual_ns(lambda1_val, lambda2_range, n1_range = 15, n2_range = 25):
 
-    global lambda1, lambda2
+    
     costs = []
     lambdas = list(lambda2_range)
     n1_list = []
@@ -384,7 +384,7 @@ def plot_3d_cost_surface(lambda1_range, lambda2_range, n1_range=15, n2_range=25)
 ############################## Figure 6
 def plot_time_vs_lambda2_with_individual_ns(lambda1_val_high, lambda1_val_low, lambda2_range, n1_range = 15, n2_range = 25):
 
-    global lambda1, lambda2
+    
     costs1 = []
     costs2 = []
     costs3 = []
@@ -433,7 +433,7 @@ def plot_time_vs_lambda2_with_individual_ns(lambda1_val_high, lambda1_val_low, l
 
 
 def plot_lyapunov_drift(lambda1_range, lambda2_range, max_range, n1_range=15, n2_range=25):
-    global lambda1, lambda2
+    
     convergence, drift_vals, avg_val = simulate_lyapunov(max_range)
 
     avg_stability = 0
