@@ -16,7 +16,7 @@ lambda2 = 4  # Energy cost for uncompressed
 V_val = 1 # a constant multiplied with all lambda, except for cost calculation. this will only
 # effect the next step calculation, but not the calculation of the final cost, so it is only a
 #temporary factor to help calculations
-stabilityMargine = 0.5
+stabilityMargine = .5
 RANDOM_SEED = 123543 # Change or set to None to disable fixed seeding
 h = 1 # variant exponent
 
@@ -391,10 +391,12 @@ if __name__ == "__main__":
     print(f"  Dense Update (2): {dense_actions} ({dense_actions / num_steps:.2%})")
     print(f"Cost: {sparse_actions*lambda1 + dense_actions*lambda2 + num_instable}")  #TODO it should also include the cost of it beeing in a bad state, not just communicvation
 
+    if mode == 3:
+        print(f"Lyapunov Cost: {sparse_actions * lambda1 + dense_actions * lambda2 + V(num_instable)}")
+
     #TODO for lyapunov, in addition to this, also calculate the cost (st + ld1 + ld2) with st = V(st)
     # --- Visualize S(t) over Time ---
 
-    #TODO add the distribution of AOSI with the avg as well as the number of times we have each IOSI
     try:
         action_colors = {
             0: 'green',  # Idle
