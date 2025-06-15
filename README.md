@@ -66,46 +66,125 @@ The core objective is to **minimize a cost function** that considers both the en
 ## 💻 Code Structure and Key Functions
 
 - **`get_transition_probs(st: int) -> np.ndarray`**  
-  Returns an array `[Pr[Idle], Pr[Compressed], Pr[Uncompressed]]` with transition probabilities from current state `st` for all actions.
+  **Variables**:  
+  - `st` (int): Current system state  
+  **Returns**:  
+  - `np.ndarray`: Array `[Pr[Idle], Pr[Compressed], Pr[Uncompressed]]` representing transition probabilities for all actions from state `st`.
+
+---
 
 - **`stable_unstable(st: int, dt: int, prs: np.ndarray) -> int`**  
-  Determines the next system state (stable or unstable) based on current state `st`, action `dt`, and transition probabilities `prs`.
+  **Variables**:  
+  - `st` (int): Current system state  
+  - `dt` (int): Selected action (0=Idle, 1=Compressed, 2=Uncompressed)  
+  - `prs` (np.ndarray): Transition probabilities from `get_transition_probs()`  
+  **Returns**:  
+  - `int`: Next system state (0 = stable, 1 = unstable)
+
+---
 
 - **`determin_next_F(st: int) -> tuple[int, np.ndarray]`**  
-  Implements the F-function control policy. Returns optimal action and probability array `[Pr[Idle], Pr[Compressed], Pr[Uncompressed]]`.
+  **Variables**:  
+  - `st` (int): Current system state  
+  **Returns**:  
+  - `int`: Optimal action chosen based on minimizing expected future cost  
+  - `np.ndarray`: Transition probability array for chosen action
+
+---
 
 - **`determin_next_G(st: int) -> tuple[int, np.ndarray]`**  
-  Implements the G-function control policy. Returns optimal action and probability array `[Pr[Idle], Pr[Compressed], Pr[Uncompressed]]`.
+  **Variables**:  
+  - `st` (int): Current system state  
+  **Returns**:  
+  - `int`: Optimal action minimizing immediate expected cost  
+  - `np.ndarray`: Transition probability array for chosen action
+
+---
 
 - **`pick_lyapunov(st: int, a: float, b: float, c: float) -> tuple[int, np.ndarray]`**  
-  Lyapunov drift-based control policy selecting the action that minimizes expected Lyapunov drift plus cost. Returns optimal action and associated transition probabilities.
+  **Variables**:  
+  - `st` (int): Current system state  
+  - `a`, `b`, `c` (float): Lyapunov parameters  
+  **Returns**:  
+  - `int`: Optimal action minimizing Lyapunov drift + cost  
+  - `np.ndarray`: Transition probabilities under chosen action
+
+---
 
 - **`V(x: int, a: float, b: float, c: float, h: float) -> float`**  
-  Lyapunov function defined as \( V(x) = a \cdot x^b + h \cdot c \), quantifying the "badness" of instability.
+  **Variables**:  
+  - `x` (int): Current AOIS state  
+  - `a`, `b`, `c`, `h` (float): Parameters of Lyapunov function  
+  **Returns**:  
+  - `float`: Computed value of Lyapunov function \( V(x) = a \cdot x^b + h \cdot c \)
+
+---
 
 - **`run_sim(numruns: int) -> None`** *(mode 0)*  
-  Debugging simulation for testing logic.
+  **Variables**:  
+  - `numruns` (int): Number of simulation steps  
+  **Returns**:  
+  - `None`: Runs a debug simulation for logic testing
+
+---
 
 - **`run_sim_1(numruns: int) -> tuple[np.ndarray, np.ndarray]`** *(mode 1)*  
-  Simulates the system using the G-function control policy. Returns AOIS state history and action history.
+  **Variables**:  
+  - `numruns` (int): Number of simulation steps  
+  **Returns**:  
+  - `np.ndarray`: AOIS state history  
+  - `np.ndarray`: Action history using G-function policy
+
+---
 
 - **`run_sim_2(numruns: int) -> tuple[np.ndarray, np.ndarray]`** *(mode 2)*  
-  Simulates the system using the F-function control policy. Returns AOIS state history and action history.
+  **Variables**:  
+  - `numruns` (int): Number of simulation steps  
+  **Returns**:  
+  - `np.ndarray`: AOIS state history  
+  - `np.ndarray`: Action history using F-function policy
+
+---
 
 - **`run_sim_3(numruns: int, a: float, b: float, c: float) -> tuple[np.ndarray, np.ndarray]`** *(mode 3)*  
-  Simulates the system using the Lyapunov drift control policy. Returns AOIS state history and action history.
+  **Variables**:  
+  - `numruns` (int): Number of simulation steps  
+  - `a`, `b`, `c` (float): Lyapunov parameters  
+  **Returns**:  
+  - `np.ndarray`: AOIS state history  
+  - `np.ndarray`: Action history using Lyapunov drift policy
+
+---
 
 - **`find_optimal_V() -> np.ndarray`** *(mode -1)*  
-  Grid search for optimal Lyapunov parameters that minimize average AOIS. Prints the 10 best results to the console.
+  **Returns**:  
+  - `np.ndarray`: Array of parameter combinations and their performance, sorted by AOIS. Top 10 printed to console.
+
+---
 
 - **`simulate_lyapunov(max_steps: int) -> tuple[list[float], list[float]]`**  
-  Simulates Lyapunov drift over time. Returns drift values and their convergence measures.
+  **Variables**:  
+  - `max_steps` (int): Simulation duration  
+  **Returns**:  
+  - `list[float]`: Lyapunov drift values per step  
+  - `list[float]`: Convergence values per step
+
+---
 
 - **`plot_lyapunov_drift(max_range: int, n1_range: int, n2_range: int) -> None`**  
-  Plots Lyapunov drift and convergence based on a range of steps.
+  **Variables**:  
+  - `max_range`, `n1_range`, `n2_range` (int): Configuration for simulation length and drift analysis  
+  **Returns**:  
+  - `None`: Plots Lyapunov drift and convergence results
+
+---
 
 - **`plot_state_distribution(S_states: np.ndarray) -> None`**  
-  Plots histogram and KDE of AOIS values observed during the simulation.
+  **Variables**:  
+  - `S_states` (np.ndarray): AOIS state history array  
+  **Returns**:  
+  - `None`: Displays histogram and KDE of AOIS distribution
+
 
 
 ---
