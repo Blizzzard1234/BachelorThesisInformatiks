@@ -65,47 +65,48 @@ The core objective is to **minimize a cost function** that considers both the en
 
 ## 💻 Code Structure and Key Functions
 
-- **`get_transition_probs(st)`**  
-  Calculates transition probabilities from current state `st` for all actions (Idle, Compressed, Uncompressed).
+- **`get_transition_probs(st: int) -> np.ndarray`**  
+  Returns an array `[Pr[Idle], Pr[Compressed], Pr[Uncompressed]]` with transition probabilities from current state `st` for all actions.
 
-- **`stable_unstable(st, dt, prs)`**  
+- **`stable_unstable(st: int, dt: int, prs: np.ndarray) -> int`**  
   Determines the next system state (stable or unstable) based on current state `st`, action `dt`, and transition probabilities `prs`.
 
-- **`determin_next_F(st)`**  
-  Implements the F-function based control policy selecting the action minimizing expected future cost.
+- **`determin_next_F(st: int) -> tuple[int, np.ndarray]`**  
+  Implements the F-function control policy. Returns optimal action and probability array `[Pr[Idle], Pr[Compressed], Pr[Uncompressed]]`.
 
-- **`determin_next_G(st)`**  
-  Implements the G-function based control policy selecting the action minimizing immediate expected cost.
+- **`determin_next_G(st: int) -> tuple[int, np.ndarray]`**  
+  Implements the G-function control policy. Returns optimal action and probability array `[Pr[Idle], Pr[Compressed], Pr[Uncompressed]]`.
 
-- **`pick_lyapunov(st, a, b, c)`**  
-  Lyapunov drift-based control policy selecting action that minimizes expected Lyapunov drift plus cost.
+- **`pick_lyapunov(st: int, a: float, b: float, c: float) -> tuple[int, np.ndarray]`**  
+  Lyapunov drift-based control policy selecting the action that minimizes expected Lyapunov drift plus cost. Returns optimal action and associated transition probabilities.
 
-- **`V(x, a, b, c, h)`**  
-  Lyapunov function defined as \( V(x) = a \cdot x^b + h \cdot c \), quantifying instability "badness."
+- **`V(x: int, a: float, b: float, c: float, h: float) -> float`**  
+  Lyapunov function defined as \( V(x) = a \cdot x^b + h \cdot c \), quantifying the "badness" of instability.
 
-- **`run_sim(numruns)` (mode 0)**  
-  Debugging simulation to test early policy logic.
+- **`run_sim(numruns: int) -> None`** *(mode 0)*  
+  Debugging simulation for testing logic.
 
-- **`run_sim_1(numruns)` (mode 1)**  
-  Simulates system using G-function control policy.
+- **`run_sim_1(numruns: int) -> tuple[np.ndarray, np.ndarray]`** *(mode 1)*  
+  Simulates the system using the G-function control policy. Returns AOIS state history and action history.
 
-- **`run_sim_2(numruns)` (mode 2)**  
-  Simulates system using F-function control policy.
+- **`run_sim_2(numruns: int) -> tuple[np.ndarray, np.ndarray]`** *(mode 2)*  
+  Simulates the system using the F-function control policy. Returns AOIS state history and action history.
 
-- **`run_sim_3(num_runs, a, b, c)` (mode 3)**  
-  Simulates system using Lyapunov drift control policy with custom parameters.
+- **`run_sim_3(numruns: int, a: float, b: float, c: float) -> tuple[np.ndarray, np.ndarray]`** *(mode 3)*  
+  Simulates the system using the Lyapunov drift control policy. Returns AOIS state history and action history.
 
-- **`find_optimal_V()` (mode -1)**  
-  Grid search for optimal Lyapunov parameters minimizing average AOIS.
+- **`find_optimal_V() -> np.ndarray`** *(mode -1)*  
+  Grid search for optimal Lyapunov parameters that minimize average AOIS. Prints the 10 best results to the console.
 
-- **`simulate_lyapunov(max_steps)`**  
-  Simulates Lyapunov drift over time, checking convergence.
+- **`simulate_lyapunov(max_steps: int) -> tuple[list[float], list[float]]`**  
+  Simulates Lyapunov drift over time. Returns drift values and their convergence measures.
 
-- **`plot_lyapunov_drift(max_range, n1_range, n2_range)`**  
-  Visualizes Lyapunov drift and its convergence.
+- **`plot_lyapunov_drift(max_range: int, n1_range: int, n2_range: int) -> None`**  
+  Plots Lyapunov drift and convergence based on a range of steps.
 
-- **`plot_state_distribution(S_states)`**  
-  Plots histogram and KDE of AOIS values observed in simulation.
+- **`plot_state_distribution(S_states: np.ndarray) -> None`**  
+  Plots histogram and KDE of AOIS values observed during the simulation.
+
 
 ---
 
