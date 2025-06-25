@@ -373,11 +373,11 @@ if __name__ == "__main__":
         #you can run V optimizer and then just copy paste the exact thing here
 
         #AoSI
-        a, b, c = 4.5, 1, 8 #→ mean=0.317, most_common=0, cost = 298
+        #a, b, c = 4.5, 1, 8 #→ mean=0.317, most_common=0, cost = 298
         #a, b, c = 3.8, 8, 2 #→ mean=0.366, most_common=0, cost = 270
         #a, b, c = 4.2, 2, 0 #→ mean=0.366, most_common=0, cost = 284
         #Cost
-        #a, b, c = 0.0, 11, 0 #→ mean=1.733, most_common=0, cost = 90
+        a, b, c = 0.0, 11, 0 #→ mean=1.733, most_common=0, cost = 90
         #a, b, c = 0.2, 0, 8 #→ mean=2.248, most_common=0, cost = 92
         #a, b, c = 1.6, 0, 3 #→ mean=2.188, most_common=0, cost = 97
         for i in range(n):
