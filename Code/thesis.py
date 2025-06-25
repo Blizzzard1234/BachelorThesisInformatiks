@@ -136,7 +136,7 @@ def pick_lyapunov(st,a,b,c):
 
     ly = V(st,a,b,c)
     vals[0] = (V(values[0],a,b,c) - ly) + values[0] * stabilityMargine
-    vals[1] = (V(values[1],a,b,c) - ly) + lambda1 * V_val + values[1]* stabilityMargine #TODO maybe try finding a variable V value, instead of a constant and see how that works out
+    vals[1] = (V(values[1],a,b,c) - ly) + lambda1 * V_val + values[1]* stabilityMargine #DONE maybe try finding a variable V value, instead of a constant and see how that works out
     vals[2] = (V(values[2],a,b,c) - ly) + lambda2 * V_val + values[2]* stabilityMargine
 
 
@@ -294,7 +294,7 @@ def find_optimal_V():
 
 
 
-#TODO try different variations, including a nested loop part where other values are tries
+#DONE try different variations, including a nested loop part where other values are tries
 # stuff like a * x ** b + h * c with a,b,c as variable loops and h as a constant
 def V(x, a=0.5, b=2, c=0, h=1):
     try:
@@ -346,6 +346,12 @@ def plot_state_distribution(S_states):
     plt.tight_layout()
     plt.show()
 
+def stabilization_time(S_states, threshold=1, window=20):
+    for t in range(window, len(S_states)):
+        if np.mean(S_states[t-window:t]) < threshold:
+            return t
+    return len(S_states)
+
 
 if __name__ == "__main__":
 
@@ -395,6 +401,7 @@ if __name__ == "__main__":
         idle_actions = actions.count(0)
         sparse_actions = actions.count(1)
         dense_actions = actions.count(2)
+        stab_time = stabilization_time(S_states)
 
         print("\n--- Simulation Summary ---")
         print(f"Total simulation steps: {num_steps}")
@@ -404,12 +411,13 @@ if __name__ == "__main__":
         print(f"  Idle (0): {idle_actions} ({idle_actions / num_steps:.2%})")
         print(f"  Sparse Update (1): {sparse_actions} ({sparse_actions / num_steps:.2%})")
         print(f"  Dense Update (2): {dense_actions} ({dense_actions / num_steps:.2%})")
-        print(f"Cost: {sparse_actions*lambda1 + dense_actions*lambda2 + num_instable}")  #TODO it should also include the cost of it beeing in a bad state, not just communicvation
+        print(f"Cost: {sparse_actions*lambda1 + dense_actions*lambda2 + num_instable}")  #DONE it should also include the cost of it beeing in a bad state, not just communicvation
+        print(f"Bellman policy (G): stabilizes at t = {stab_time}")
 
         if mode == 3:
             print(f"Lyapunov Cost: {sparse_actions * lambda1 + dense_actions * lambda2 + V(num_instable)}")
 
-        #TODO for lyapunov, in addition to this, also calculate the cost (st + ld1 + ld2) with st = V(st)
+        #DONE for lyapunov, in addition to this, also calculate the cost (st + ld1 + ld2) with st = V(st)
         # --- Visualize S(t) over Time ---
 
         try:

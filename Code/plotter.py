@@ -17,9 +17,12 @@ MAX_I = 100  # Should be large enough to approximate infinite sums
 
 #should it be computed numerically (sum from min -> min + MAX_I) => True; should be calculated using the closed_form version like given in the paper => False
 numeric_calculation = False
+RANDOM_SEED = 123543 # Change or set to None to disable fixed seeding
 
-
-
+if RANDOM_SEED is not None:
+    rng = random.Random(RANDOM_SEED)
+else:
+    rng = random.Random()
 
 
 # Derived constants
@@ -176,6 +179,14 @@ def find_optimal_thresholds(lambda1_val, lambda2_val, max_n1=15, max_n2=25):
     return best_n1, best_n2, best_cost
 
 
+def stable_unstable(st, prs):
+    # Determine the next state based on the calculated probability
+    if rng.random() < prs:
+        return st + 1
+    else:
+        return 0
+
+
 def calculate_next(st, dt):
     if st == 0:
         if dt == 0:
@@ -197,10 +208,9 @@ def calculate_next(st, dt):
             raise ValueError(f"Something went wrong. we are in an invalid state {dt}")
 
     # Determine the next state based on the calculated probability
-    if random.random() < prob_increment:
-        return st + 1
-    else:
-        return 0
+    return stable_unstable(st, prob_increment)
+
+
 
 def simulate_AoSI(num_steps):
     st = 0
