@@ -91,6 +91,7 @@ def determin_next_F(st):
 
     return optimal_action, g_values
 
+
 # this function calculates the next step. it uses the G function
 def determin_next_G(st):
     g_values = {}  # Dictionary to store G(S, action) values for each action

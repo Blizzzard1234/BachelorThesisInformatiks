@@ -1,5 +1,4 @@
 import pytest
-import numpy as np
 
 from thesis import (
     get_transition_probs,
