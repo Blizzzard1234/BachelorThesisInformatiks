@@ -1,14 +1,14 @@
 # Networked Control System Stability Simulation
 
-This project simulates the stability and control strategies within a networked control system, expanding upon concepts introduced in the paper **"Semantics of Instability in Networked Control."** It explores different control policies (based on G-function, F-function, and Lyapunov drift) to manage the system's **Age of System Instability (AOIS).**
+This project simulates the stability and control strategies within a networked control system, expanding upon concepts introduced in the paper **"Semantics of Instability in Networked Control."** It explores different control policies (based on G-function, F-function, and Lyapunov drift) to manage the system's **Age of System Instability (AOSI).**
 
 ---
 
 ## 📄 Project Overview
 
-The code models a system that can be in either a **stable** (AOIS = 0) or **unstable** (AOIS > 0) state. A controller attempts to stabilize the system by sending messages, which can be **compressed** or **uncompressed**, each incurring a different energy cost.
+The code models a system that can be in either a **stable** (AOSI = 0) or **unstable** (AOSI > 0) state. A controller attempts to stabilize the system by sending messages, which can be **compressed** or **uncompressed**, each incurring a different energy cost.
 
-The core objective is to **minimize a cost function** that considers both the energy expended on control actions and the "cost" of being in an unstable state (represented by the AOIS value).
+The core objective is to **minimize a cost function** that considers both the energy expended on control actions and the "cost" of being in an unstable state (represented by the AOSI value).
 
 ---
 
@@ -19,15 +19,15 @@ The core objective is to **minimize a cost function** that considers both the en
   - **F-function based**: Decision-making minimizing a cost related to system state transitions (`determin_next_F`).  
   - **Lyapunov Drift based**: Control decisions driven by minimizing Lyapunov drift to achieve stability (`pick_lyapunov`).  
 
-- **Dynamic AOIS Simulation**: Track the Age of System Instability over time, observing how control actions influence its evolution.
+- **Dynamic AOSI Simulation**: Track the Age of System Instability over time, observing how control actions influence its evolution.
 
 - **Parameter Customization**: Easily adjust key system and control parameters to explore various scenarios.
 
 - **Optimal Parameter Search**: Mode to find optimal parameters for the Lyapunov function.
 
 - **Visualizations**: Plots showing:  
-  - Evolution of AOIS over time with control actions highlighted  
-  - Distribution of AOIS values during simulation  
+  - Evolution of AOSI over time with control actions highlighted  
+  - Distribution of AOSI values during simulation  
   - Lyapunov drift over time and convergence
 
 ---
@@ -113,7 +113,7 @@ The core objective is to **minimize a cost function** that considers both the en
 
 - **`V(x: int, a: float, b: float, c: float, h: float) -> float`**  
   **Variables**:  
-  - `x` (int): Current AOIS state  
+  - `x` (int): Current AOSI state  
   - `a`, `b`, `c`, `h` (float): Parameters of Lyapunov function  
   **Returns**:  
   - `float`: Computed value of Lyapunov function \( V(x) = a \cdot x^b + h \cdot c \)
@@ -132,7 +132,7 @@ The core objective is to **minimize a cost function** that considers both the en
   **Variables**:  
   - `numruns` (int): Number of simulation steps  
   **Returns**:  
-  - `np.ndarray`: AOIS state history  
+  - `np.ndarray`: AOSI state history  
   - `np.ndarray`: Action history using G-function policy
 
 ---
@@ -141,7 +141,7 @@ The core objective is to **minimize a cost function** that considers both the en
   **Variables**:  
   - `numruns` (int): Number of simulation steps  
   **Returns**:  
-  - `np.ndarray`: AOIS state history  
+  - `np.ndarray`: AOSI state history  
   - `np.ndarray`: Action history using F-function policy
 
 ---
@@ -151,14 +151,14 @@ The core objective is to **minimize a cost function** that considers both the en
   - `numruns` (int): Number of simulation steps  
   - `a`, `b`, `c` (float): Lyapunov parameters  
   **Returns**:  
-  - `np.ndarray`: AOIS state history  
+  - `np.ndarray`: AOSI state history  
   - `np.ndarray`: Action history using Lyapunov drift policy
 
 ---
 
 - **`find_optimal_V() -> np.ndarray`** *(mode -1)*  
   **Returns**:  
-  - `np.ndarray`: Array of parameter combinations and their performance, sorted by AOIS. Top 10 printed to console.
+  - `np.ndarray`: Array of parameter combinations and their performance, sorted by AOSI. Top 10 printed to console.
 
 ---
 
@@ -181,9 +181,9 @@ The core objective is to **minimize a cost function** that considers both the en
 
 - **`plot_state_distribution(S_states: np.ndarray) -> None`**  
   **Variables**:  
-  - `S_states` (np.ndarray): AOIS state history array  
+  - `S_states` (np.ndarray): AOSI state history array  
   **Returns**:  
-  - `None`: Displays histogram and KDE of AOIS distribution
+  - `None`: Displays histogram and KDE of AOSI distribution
 
 
 
