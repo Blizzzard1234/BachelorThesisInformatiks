@@ -1,7 +1,9 @@
 import numpy as np
 import matplotlib.pyplot as plt
-import argparse
 import random
+import seaborn as sns
+from matplotlib.collections import LineCollection
+from matplotlib.lines import Line2D
 
 ###################### Parameters
 r1 = 0.9
@@ -17,7 +19,8 @@ MAX_I = 100  # Should be large enough to approximate infinite sums
 
 #should it be computed numerically (sum from min -> min + MAX_I) => True; should be calculated using the closed_form version like given in the paper => False
 numeric_calculation = False
-RANDOM_SEED = 123543 # Change or set to None to disable fixed seeding
+
+RANDOM_SEED = 123543
 
 if RANDOM_SEED is not None:
     rng = random.Random(RANDOM_SEED)
@@ -160,7 +163,7 @@ def F_function(n1, n2, un0):
 
 ############################### finding the n1 and n2 values. lambdas have to be given for these since we need either the lambda or the n values
 def find_optimal_thresholds(lambda1_val, lambda2_val, max_n1=15, max_n2=25):
-    
+    global lambda1, lambda2
     lambda1 = lambda1_val
     lambda2 = lambda2_val
 
@@ -177,14 +180,6 @@ def find_optimal_thresholds(lambda1_val, lambda2_val, max_n1=15, max_n2=25):
                 best_n1, best_n2 = n1, n2
 
     return best_n1, best_n2, best_cost
-
-
-def stable_unstable(st, prs):
-    # Determine the next state based on the calculated probability
-    if rng.random() < prs:
-        return st + 1
-    else:
-        return 0
 
 
 def calculate_next(st, dt):
@@ -208,10 +203,10 @@ def calculate_next(st, dt):
             raise ValueError(f"Something went wrong. we are in an invalid state {dt}")
 
     # Determine the next state based on the calculated probability
-    return stable_unstable(st, prob_increment)
-
-
-
+    if rng.random()  < prob_increment:
+        return st + 1
+    else:
+        return 0
 
 def simulate_AoSI(num_steps):
     st = 0
@@ -280,7 +275,7 @@ def simulate_lyapunov(max_steps):
     avg_val = np.zeros_like(range(0, max_steps), dtype=float)
     convergence = -1
     for x in range(max_steps):
-        probability = random.random()
+        probability = rng.random()
         if current_state == 0: #stable
             if r0 > probability: #stays stable
                 drift = V(0,probability) - V(x,probability)
@@ -311,7 +306,7 @@ def simulate_lyapunov(max_steps):
 #################### Fig 5 for individual lambda 1 values; fast without individual n minimisation
 def plot_cost_vs_lambda2(n1, n2, lambda1_val, lambda2_range):
 
-    
+    global lambda1, lambda2
     costs = []
     lambdas = list(lambda2_range)
     un0 = compute_un0(n1, n2)
@@ -332,7 +327,7 @@ def plot_cost_vs_lambda2(n1, n2, lambda1_val, lambda2_range):
 ################### individual Fig 5 calculation, with percise n calculation
 def plot_cost_vs_lambda2_with_individual_ns(lambda1_val, lambda2_range, n1_range = 15, n2_range = 25):
 
-    
+    global lambda1, lambda2
     costs = []
     lambdas = list(lambda2_range)
     n1_list = []
@@ -395,7 +390,7 @@ def plot_3d_cost_surface(lambda1_range, lambda2_range, n1_range=15, n2_range=25)
 ############################## Figure 6
 def plot_time_vs_lambda2_with_individual_ns(lambda1_val_high, lambda1_val_low, lambda2_range, n1_range = 15, n2_range = 25):
 
-    
+    global lambda1, lambda2
     costs1 = []
     costs2 = []
     costs3 = []
@@ -444,7 +439,7 @@ def plot_time_vs_lambda2_with_individual_ns(lambda1_val_high, lambda1_val_low, l
 
 
 def plot_lyapunov_drift(lambda1_range, lambda2_range, max_range, n1_range=15, n2_range=25):
-    
+    global lambda1, lambda2
     convergence, drift_vals, avg_val = simulate_lyapunov(max_range)
 
     avg_stability = 0
@@ -485,6 +480,79 @@ def plot_lyapunov_drift(lambda1_range, lambda2_range, max_range, n1_range=15, n2
 
 
 
+def get_transition_probs(st):
+    if st == 0:
+        return {
+            0: 1 - r0,
+            1: (1 - r0) * (1 - rho * p),
+            2: (1 - r0) * (1 - rho * q)
+        }
+    else:
+        return {
+            0: r1,
+            1: r1 * (1 - p * rho),
+            2: r1 * (1 - q * rho)
+        }
+
+
+def stable_unstable(st, dt, prs):
+    # Determine the next state based on the calculated probability
+    if rng.random() < prs[dt]:
+        return st + 1
+    else:
+        return 0
+
+def simulate_paper(n):
+    n1, n2, cost = find_optimal_thresholds(lambda1, lambda2, 50, 50)
+    st = 0
+    S_history = [0]  # Initialize history with the starting state
+    action_history = []
+
+    for i in range(n):
+        next = 0
+        if st <n1 and st < n2:
+            action = 0
+        elif st >= n1 and st < n2:
+            action = 1
+        else:
+            action = 2
+
+        action_history.append(action)
+
+        # 2. Calculate the next state S(t+1) based on the chosen action
+        probs = get_transition_probs(st)
+        next_S = stable_unstable(st, action, probs)
+
+        S_history.append(next_S)
+        st = next_S  # Update current_S for the next iteration
+
+    return S_history, action_history
+
+
+def stabilization_time(S_states, threshold=1, window=20):
+    for t in range(window, len(S_states)):
+        if np.mean(S_states[t-window:t]) < threshold:
+            return t
+    return len(S_states)
+
+def plot_state_distribution(S_states):
+    mean_val = sum(S_states) / len(S_states)
+
+    plt.figure(figsize=(10, 5))
+    sns.histplot(S_states, kde=True, bins=range(min(S_states), max(S_states) + 2),
+                 color='skyblue', edgecolor='black')
+
+    # Add average line
+    plt.axvline(mean_val, color='red', linestyle='--', linewidth=1.5, label=f'Mean = {mean_val:.2f}')
+
+    # Plot styling
+    plt.title("Distribution of Age of System Instability (S(t))", fontsize=14)
+    plt.xlabel("S(t) Value", fontsize=12)
+    plt.ylabel("Frequency", fontsize=12)
+    plt.grid(True, linestyle='--', alpha=0.6)
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
 
 
 
@@ -495,12 +563,100 @@ if __name__ == "__main__":
     ## execute the program
     plot_3d_cost_surface(range(0,10), range(0,10), 100, 100)
     # plot_cost_vs_lambda2_with_individual_ns(0,range(0,10),100, 100)
-    #plot_cost_vs_lambda2_with_individual_ns(10,range(0,10), 100, 100)
+    # plot_cost_vs_lambda2_with_individual_ns(10,range(0,10), 100, 100)
     plot_time_vs_lambda2_with_individual_ns(1,6, range(0,10), 100, 100)
 
     plot_lyapunov_drift(1,6, 1000, 100, 100)
 
-    simulate_AoSI(10000)
+    #simulate_AoSI(10)
 
+    n = 1
+    num_steps = 100
+    avgs = np.zeros_like(range(0, n), dtype=float)
+    for i in range(n):
+
+        S_states, actions = simulate_paper(num_steps)
+
+        avgs[i] = (sum(S_states) / len(S_states))
+
+    num_instable = 0
+
+    for i in S_states:
+        if not i == 0:
+            num_instable = num_instable + 1
+
+    idle_actions = actions.count(0)
+    sparse_actions = actions.count(1)
+    dense_actions = actions.count(2)
+    stab_time = stabilization_time(S_states)
+
+    print("\n--- Simulation Summary ---")
+    print(f"Total simulation steps: {num_steps}")
+    print(f"Average Age Of System Instability (ADSI): {avgs[-1]:.4f}")
+    print(f"Average Age Of System Instability (ADSI) over {n}: {avgs.mean():.4f}")
+    print(f"Breakdown of actions taken:")
+    print(f"  Idle (0): {idle_actions} ({idle_actions / num_steps:.2%})")
+    print(f"  Sparse Update (1): {sparse_actions} ({sparse_actions / num_steps:.2%})")
+    print(f"  Dense Update (2): {dense_actions} ({dense_actions / num_steps:.2%})")
+    print(
+        f"Cost: {sparse_actions * lambda1 + dense_actions * lambda2 + num_instable}")  # DONE it should also include the cost of it beeing in a bad state, not just communicvation
+    print(f"Bellman policy (G): stabilizes at t = {stab_time}")
+
+
+    # DONE for lyapunov, in addition to this, also calculate the cost (st + ld1 + ld2) with st = V(st)
+    # --- Visualize S(t) over Time ---
+
+    try:
+        action_colors = {
+            0: 'green',  # Idle
+            1: 'orange',  # Compressed
+            2: 'red'  # Uncompressed
+        }
+
+        # Build segments for LineCollection
+        points = np.array([range(len(S_states)), S_states]).T.reshape(-1, 1, 2)
+        segments = np.concatenate([points[:-1], points[1:]], axis=1)
+
+        # Map each segment to its corresponding action
+        colors = [action_colors[act] for act in actions[:-1]]
+
+        # Create the plot
+        fig, ax = plt.subplots(figsize=(14, 7))
+
+        # Add colored lines per segment
+        lc = LineCollection(segments, colors=colors, linewidth=2.5)
+        ax.add_collection(lc)
+
+        # Overlay the full S(t) curve as a thin line for readability
+        ax.plot(range(len(S_states)), S_states, color='black', linewidth=0.5, label='S(t) Trace')
+
+        # Add horizontal baseline
+        ax.axhline(y=0, color='red', linestyle=':', linewidth=1, label='S(t) = 0 (Good State)')
+
+        # Styling
+        ax.set_title(f'Simulated Age of System Instability (S(t)) Over Time with V(st) = {a}x^{b} + x*{c}',
+                     fontsize=16)
+        ax.set_xlabel('Time Step', fontsize=12)
+        ax.set_ylabel('S(t) Value', fontsize=12)
+        ax.grid(True, linestyle='--', alpha=0.7)
+        ax.legend(fontsize=10)
+        custom_lines = [
+            Line2D([0], [0], color='green', lw=2, label='Idle (0)'),
+            Line2D([0], [0], color='red', lw=2, label='Compressed (1)'),
+            Line2D([0], [0], color='orange', lw=2, label='Uncompressed (2)')
+        ]
+
+        # Add to the existing legend
+        ax.legend(handles=[*custom_lines,
+                           Line2D([0], [0], color='black', lw=0.5, label='S(t) Trace'),
+                           Line2D([0], [0], color='red', lw=1, linestyle=':', label='S(t) = 0 (Good State)')],
+                  fontsize=10)
+        plt.tight_layout()
+        plt.show()
+    except Exception as e:
+        print(f"\nError plotting with Matplotlib: {e}")
+        print("Please ensure matplotlib is installed (`pip install matplotlib`) if you want to see the plot.")
+
+    plot_state_distribution(S_states)
 
     print("Done")

@@ -10,12 +10,12 @@ r0 = 0.1 #pr that the state will remain stable, independently of everything else
 rho = 0.9 # pr that a package was successfully decoded
 p = 0.5 # pr that we become stable when controler recives a compressed message
 q = 0.9  #pr that we become stable when controler recives a uncompressed message
-lambda1 = 2  # Energy cost for compressed
-lambda2 = 4  # Energy cost for uncompressed
+lambda1 = 1  # Energy cost for compressed
+lambda2 = 2  # Energy cost for uncompressed
 V_val = 1 # a constant multiplied with all lambda, except for cost calculation. this will only
 # effect the next step calculation, but not the calculation of the final cost, so it is only a
 #temporary factor to help calculations
-stabilityMargine = .5
+stabilityMargine = 1
 RANDOM_SEED = 123543 # Change or set to None to disable fixed seeding
 h = 1 # variant exponent
 
@@ -126,19 +126,17 @@ def determin_next_G(st):
 def pick_lyapunov(st,a,b,c):
 
 
-    values = {}
     vals = {}
 
     prs = get_transition_probs(st)
 
-    values[0] = stable_unstable(st, 0, prs)
-    values[1] = stable_unstable(st, 1, prs)
-    values[2] = stable_unstable(st, 2, prs)
 
     ly = V(st,a,b,c)
-    vals[0] = (V(values[0],a,b,c) - ly) + values[0] * stabilityMargine
-    vals[1] = (V(values[1],a,b,c) - ly) + lambda1 * V_val + values[1]* stabilityMargine #DONE maybe try finding a variable V value, instead of a constant and see how that works out
-    vals[2] = (V(values[2],a,b,c) - ly) + lambda2 * V_val + values[2]* stabilityMargine
+
+    #This should give the expected |E value
+    vals[0] = ((V(st+1,a,b,c) - ly) + (st +1) * stabilityMargine) * prs[0] + (V(0,a,b,c) - ly) * (1 - prs[0])
+    vals[1] = ((V(st+1,a,b,c) - ly) + lambda1 * V_val + (st +1)* stabilityMargine) * prs[1] + (V(0,a,b,c) - ly + lambda1 * V_val) * (1 - prs[1])
+    vals[2] = ((V(st+1,a,b,c) - ly) + lambda2 * V_val + (st +1)* stabilityMargine) * prs[2] + (V(0,a,b,c) - ly + lambda2 * V_val) * (1 - prs[2])
 
 
 
@@ -424,8 +422,8 @@ if __name__ == "__main__":
         try:
             action_colors = {
                 0: 'green',  # Idle
-                1: 'red',  # Compressed
-                2: 'orange'  # Uncompressed
+                1: 'orange',  # Compressed
+                2: 'red'  # Uncompressed
             }
 
             # Build segments for LineCollection
@@ -449,7 +447,7 @@ if __name__ == "__main__":
             ax.axhline(y=0, color='red', linestyle=':', linewidth=1, label='S(t) = 0 (Good State)')
 
             # Styling
-            ax.set_title(f'Simulated Age of System Instability (S(t)) Over Time with V(st) = {a}x^{b} + {h}*{c}', fontsize=16)
+            ax.set_title(f'Simulated Age of System Instability (S(t)) Over Time with V(st) = {a}x^{b} + x*{c}', fontsize=16)
             ax.set_xlabel('Time Step', fontsize=12)
             ax.set_ylabel('S(t) Value', fontsize=12)
             ax.grid(True, linestyle='--', alpha=0.7)
