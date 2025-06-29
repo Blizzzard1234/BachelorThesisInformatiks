@@ -11,7 +11,7 @@ rho = 0.9 # pr that a package was successfully decoded
 p = 0.5 # pr that we become stable when controler recives a compressed message
 q = 0.9  #pr that we become stable when controler recives a uncompressed message
 lambda1 = 1  # Energy cost for compressed
-lambda2 = 2  # Energy cost for uncompressed
+lambda2 = 4  # Energy cost for uncompressed
 V_val = 1 # a constant multiplied with all lambda, except for cost calculation. this will only
 # effect the next step calculation, but not the calculation of the final cost, so it is only a
 #temporary factor to help calculations
@@ -20,7 +20,7 @@ RANDOM_SEED = 123543 # Change or set to None to disable fixed seeding
 h = 1 # variant exponent
 
 
-mode = 3 #-1 = find the optimal V value, 0 = debugging, 1 = with G function, 2 = with F function, 3 = with Lyapunov drift
+mode = -1 #-1 = find the optimal V value, 0 = debugging, 1 = with G function, 2 = with F function, 3 = with Lyapunov drift
 
 
 
@@ -280,14 +280,30 @@ def find_optimal_V():
 
     sorted_results_AoSI = sorted(results, key=lambda r: r['mean'])
     sorted_results_cost = sorted(results, key=lambda r: r['cost'])
+
+    # Normalize mean and cost to [0, 1] range for balanced scoring
+    means = np.array([r['mean'] for r in results])
+    costs = np.array([r['cost'] for r in results])
+    mean_norm = (means - means.min()) / (means.max() - means.min())
+    cost_norm = (costs - costs.min()) / (costs.max() - costs.min())
+    combined_scores = mean_norm + cost_norm
+
+    for i, r in enumerate(results):
+        r['combined_score'] = combined_scores[i]
+    sorted_results_combined = sorted(results, key=lambda r: r['combined_score'])
+
     print("*Best values by AoSI:")
     for r in sorted_results_AoSI[:10]:
-        print(f"a, b, c = {r['a']:.1f}, {r['b']}, {r['c']} → mean={r['mean']:.3f}, most_common={r['most_common']}, cost = {r['cost']}")
+        print(f"a, b, c = {r['a']:.1f}, {r['b']}, {r['c']} #→ mean={r['mean']:.3f}, most_common={r['most_common']}, cost = {r['cost']}")
     print("\n*Best values by Cost:")
     for r in sorted_results_cost[:10]:
-        print(f"a, b, c = {r['a']:.1f}, {r['b']}, {r['c']} → mean={r['mean']:.3f}, most_common={r['most_common']}, cost = {r['cost']}")
+        print(f"a, b, c = {r['a']:.1f}, {r['b']}, {r['c']} #→ mean={r['mean']:.3f}, most_common={r['most_common']}, cost = {r['cost']}")
+    print("\n*Top 10 most balanced values (mean and cost):")
+    for r in sorted_results_combined[:10]:
+        print(f"a, b, c = {r['a']:.1f}, {r['b']}, {r['c']}  #→ mean={r['mean']:.3f}, cost={r['cost']}, combined_score={r['combined_score']:.3f}")
 
-    return sorted_results_AoSI, sorted_results_cost
+
+    return sorted_results_AoSI, sorted_results_cost, sorted_results_combined
 
 
 
@@ -371,13 +387,15 @@ if __name__ == "__main__":
         #you can run V optimizer and then just copy paste the exact thing here
 
         #AoSI
-        #a, b, c = 4.5, 1, 8 #→ mean=0.317, most_common=0, cost = 298
-        #a, b, c = 3.8, 8, 2 #→ mean=0.366, most_common=0, cost = 270
-        #a, b, c = 4.2, 2, 0 #→ mean=0.366, most_common=0, cost = 284
+        #a, b, c = 2.9, 13, 1 #→ mean = 0.257, most_common = 0, cost = 204
+        #a, b, c = 2.7, 4, -6 #→ mean = 0.267, most_common = 0, cost = 204
+        #a, b, c = 3.5, 7, 0 #→ mean = 0.267, most_common = 0, cost = 201
+        #a, b, c = 1.6, 7, -9# → mean = 0.277, most_common = 0, cost = 212
         #Cost
-        a, b, c = 0.0, 11, 0 #→ mean=1.733, most_common=0, cost = 90
-        #a, b, c = 0.2, 0, 8 #→ mean=2.248, most_common=0, cost = 92
-        #a, b, c = 1.6, 0, 3 #→ mean=2.188, most_common=0, cost = 97
+        a, b, c = 1.2, 0, 5 #→ mean = 1.020, most_common = 0, cost = 94
+        #a, b, c = 0.0, 4, -2 #→ mean = 1.040, most_common = 0, cost = 95
+        #a, b, c = 2.9, 0, -10 #→ mean = 1.010, most_common = 0, cost = 95
+        #a, b, c = 2.7, 0, 5 #→ mean = 1.040, most_common = 0, cost = 97
         for i in range(n):
 
 
