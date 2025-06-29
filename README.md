@@ -223,12 +223,12 @@ for extreme precition (The number in find_optimal_V() is the number of threads, 
 
 Once executed once, the results will be displayed looking something like this: 
 ```python
-    # AoSI
+    #*Best values by AoSI:
     #a, b, c = 2.9, 13, 1 # → mean = 0.257, most_common = 0, cost = 204
     #a, b, c = 2.7, 4, -6 # → mean = 0.267, most_common = 0, cost = 204
     #a, b, c = 3.5, 7, 0 # → mean = 0.267, most_common = 0, cost = 201
     #a, b, c = 1.6, 7, -9 # → mean = 0.277, most_common = 0, cost = 212
-    # Cost
+    #Best values by Cost:
     #a, b, c = 1.2, 0, 5  # → mean = 1.020, most_common = 0, cost = 94
     #a, b, c = 0.0, 4, -2 # → mean = 1.040, most_common = 0, cost = 95
     #a, b, c = 2.9, 0, -10 # → mean = 1.010, most_common = 0, cost = 95

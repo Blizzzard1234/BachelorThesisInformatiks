@@ -1021,13 +1021,13 @@ def find_optimal_V(num_steps, num_threads=os.cpu_count()):
 
     sorted_results_combined = sorted(results, key=lambda r: r['combined_score'])
 
-    print("*Best values by AoSI:")
+    print("#*Best values by AoSI:")
     for r in sorted_results_AoSI[:10]:
         print(f"#a, b, c = {r['a']:.1f}, {r['b']}, {r['c']} #→ mean={r['mean']:.3f}, most_common={r['most_common']}, cost = {r['cost']}")
-    print("\n*Best values by Cost:")
+    print("\n#*Best values by Cost:")
     for r in sorted_results_cost[:10]:
         print(f"#a, b, c = {r['a']:.1f}, {r['b']}, {r['c']} #→ mean={r['mean']:.3f}, most_common={r['most_common']}, cost = {r['cost']}")
-    print("\n*Top 10 most balanced values (mean and cost):")
+    print("\n#*Top 10 most balanced values (mean and cost):")
     for r in sorted_results_combined[:10]:
         print(f"#a, b, c = {r['a']:.1f}, {r['b']}, {r['c']}  #→ mean={r['mean']:.3f}, cost={r['cost']}, combined_score={r['combined_score']:.3f}")
 
