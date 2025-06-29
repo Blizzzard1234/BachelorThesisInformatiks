@@ -4,6 +4,10 @@ import random
 from matplotlib.collections import LineCollection
 from matplotlib.lines import Line2D
 import seaborn as sns
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
+import itertools
+import os
 ###################### Parameters
 r1 = 0.9 #pr that the state will remain unstable, independently of everything else
 r0 = 0.1 #pr that the state will remain stable, independently of everything else
@@ -656,6 +660,14 @@ def sim_paper(num_steps):
     return AoSI, cost, actions, S_states, idle_actions, sparse_actions, dense_actions
 
 
+def find_most_common(arr):
+    values, counts = np.unique(arr, return_counts=True)
+    most_common = values[np.argmax(counts)]
+
+    return most_common
+
+
+
 #G-Function
 def sim_GFun(num_steps):
     reset_random()
@@ -946,8 +958,96 @@ def format_sigfigs(val):
         # For values < 1, show up to 2 significant digits without scientific notation
         return f"{val:.2f}".rstrip("0").rstrip(".")
 
+
+
+def find_optimal_V(num_steps, num_threads=os.cpu_count()):
+    param_grid = [(a, b, c)
+                  for a in np.arange(0.1, 20, 0.1)
+                  for b in range(1, 15)
+                  for c in range(0, 50)]
+
+    results = []
+    lock = threading.Lock()
+    counter = itertools.count()
+    total = len(param_grid)
+    steps =  total*0.01
+
+    def worker(a, b, c):
+        thread_name = threading.current_thread().name
+        i = next(counter)
+
+        if i % steps == 0:
+            with lock:
+                print(f"[{thread_name}] Finished {i} out of {total} parameter combinations...  {(i/total*100):.1f}%")
+
+        st, actions = run_sim_3(num_steps, a, b, c)
+        actions = np.array(actions)
+        st = np.array(st)
+
+        num_comp = np.count_nonzero(actions == 1)
+        num_uncomp = np.count_nonzero(actions == 2)
+        num_instable = np.count_nonzero(st != 0)
+
+        cost = lambda1 * num_comp + lambda2 * num_uncomp + num_instable
+        mean_val = st.mean()
+        most_common_val = find_most_common(st)
+
+        return {
+            'a': a,
+            'b': b,
+            'c': c,
+            'mean': mean_val,
+            'most_common': most_common_val,
+            'cost': cost
+        }
+
+    with ThreadPoolExecutor(max_workers=num_threads) as executor:
+        futures = [executor.submit(worker, a, b, c) for a, b, c in param_grid]
+        for future in as_completed(futures):
+            results.append(future.result())
+
+    # Sorting and scoring
+    sorted_results_AoSI = sorted(results, key=lambda r: r['mean'])
+    sorted_results_cost = sorted(results, key=lambda r: r['cost'])
+
+    means = np.array([r['mean'] for r in results])
+    costs = np.array([r['cost'] for r in results])
+    mean_norm = (means - means.min()) / (means.max() - means.min())
+    cost_norm = (costs - costs.min()) / (costs.max() - costs.min())
+    combined_scores = mean_norm + cost_norm
+
+    for i, r in enumerate(results):
+        r['combined_score'] = combined_scores[i]
+
+    sorted_results_combined = sorted(results, key=lambda r: r['combined_score'])
+
+    print("*Best values by AoSI:")
+    for r in sorted_results_AoSI[:10]:
+        print(f"#a, b, c = {r['a']:.1f}, {r['b']}, {r['c']} #→ mean={r['mean']:.3f}, most_common={r['most_common']}, cost = {r['cost']}")
+    print("\n*Best values by Cost:")
+    for r in sorted_results_cost[:10]:
+        print(f"#a, b, c = {r['a']:.1f}, {r['b']}, {r['c']} #→ mean={r['mean']:.3f}, most_common={r['most_common']}, cost = {r['cost']}")
+    print("\n*Top 10 most balanced values (mean and cost):")
+    for r in sorted_results_combined[:10]:
+        print(f"#a, b, c = {r['a']:.1f}, {r['b']}, {r['c']}  #→ mean={r['mean']:.3f}, cost={r['cost']}, combined_score={r['combined_score']:.3f}")
+
+    return (
+        sorted_results_AoSI[0]['a'], sorted_results_AoSI[0]['b'], sorted_results_AoSI[0]['c'],
+        sorted_results_cost[0]['a'], sorted_results_cost[0]['b'], sorted_results_cost[0]['c'],
+        sorted_results_combined[0]['a'], sorted_results_combined[0]['b'], sorted_results_combined[0]['c']
+    )
+
 if __name__ == "__main__":
     num_steps = 10000
+
+    ############################################################################################################################################
+    ############################################################################################################################################
+    compute_new_V = True  #If you set this to true, it will take a long time to compile!!!! Be warned
+    ############################################################################################################################################
+    ############################################################################################################################################
+
+    if compute_new_V:
+        a1,b1,c1,a2,b2,c2,a3,b3,c3 = find_optimal_V(100)
 
 
 
@@ -955,25 +1055,29 @@ if __name__ == "__main__":
     AoSI2, cost2, _, _, idle_actions2, sparse_actions2, dense_actions2 = sim_GFun(num_steps)
     AoSI3, cost3, _, _, idle_actions3, sparse_actions3, dense_actions3 = sim_FFun(num_steps)
 
-
-    #a,b,c = 0.5, 2, 0
+################################### Replace the V values here (As many as you like)
+    a,b,c = 0.5, 2, 0
     # AoSI
-    #a, b, c = 2.9, 13, 1 #→ mean = 0.257, most_common = 0, cost = 204
-    #a, b, c = 2.7, 4, -6 #→ mean = 0.267, most_common = 0, cost = 204
-    #a, b, c = 3.5, 7, 0 #→ mean = 0.267, most_common = 0, cost = 201
-    #a, b, c = 1.6, 7, -9# → mean = 0.277, most_common = 0, cost = 212
+    # a, b, c = 6.1, 6, 8 #→ mean=0.030, most_common=0, cost = 303
+    # a, b, c = 9.3, 1, 25 #→ mean=0.040, most_common=0, cost = 304
+    # a, b, c = 12.7, 7, 42 #→ mean=0.040, most_common=0, cost = 304
+    # a, b, c = 14.4, 10, 34 #→ mean=0.040, most_common=0, cost = 304
     # Cost
-    #a, b, c = 1.2, 0, 5  # → mean = 1.020, most_common = 0, cost = 94
-    #a, b, c = 0.0, 4, -2 #→ mean = 1.040, most_common = 0, cost = 95
-    #a, b, c = 2.9, 0, -10 #→ mean = 1.010, most_common = 0, cost = 95
-    #a, b, c = 2.7, 0, 5 #→ mean = 1.040, most_common = 0, cost = 97
+    # a, b, c = 0.1, 2, 8 #→ mean=1.089, most_common=0, cost = 100
+    # a, b, c = 0.1, 1, 5 #→ mean=1.139, most_common=0, cost = 102
+    # a, b, c = 0.1, 1, 33 #→ mean=1.168, most_common=0, cost = 103
+    # a, b, c = 0.2, 1, 9 #→ mean=1.198, most_common=0, cost = 104
 
     #*Top 10 most balanced values(mean and cost):
-    a, b, c = 0.5, 1, 4  # → mean=0.782, cost=113, combined_score=0.329
-    #a, b, c = 1.2, 1, 5  # → mean=0.782, cost=115, combined_score=0.339
-    #a, b, c = 1.2, 0, 5  # → mean=1.020, cost=94, combined_score=0.345
-    #a, b, c = 2.9, 0, -10  # → mean=1.010, cost=95, combined_score=0.346
+    # a, b, c = 4.0, 14, 38  #→ mean=0.248, cost=172, combined_score=0.423
+    # a, b, c = 1.9, 1, 46  #→ mean=0.426, cost=150, combined_score=0.426
+    # a, b, c = 3.4, 14, 19  #→ mean=0.257, cost=172, combined_score=0.429
+    # a, b, c = 2.2, 1, 31  #→ mean=0.257, cost=175, combined_score=0.441
 
+    if compute_new_V:
+        a = a3
+        b = b3
+        c = c3
 
     AoSI4, cost4, _, _, idle_actions4, sparse_actions4, dense_actions4 = sim_lya(num_steps,a,b,c)
 
@@ -1038,13 +1142,32 @@ if __name__ == "__main__":
     AoSIp, costp, idle_actionsp, sparse_actionsp, dense_actionsp = AoSI1, cost1, idle_actions1, sparse_actions1, dense_actions1
     AoSIg, costg, idle_actionsg, sparse_actionsg, dense_actionsg = AoSI2, cost2, idle_actions2, sparse_actions2, dense_actions2
 
+
     a, b, c = 0.5, 2, 0
     AoSI1, cost1, _, _, idle_actions1, sparse_actions1, dense_actions1 = sim_lya(num_steps, a, b, c)
-    a, b, c = 2.9, 13, 1  # → mean = 0.257, most_common = 0, cost = 204
+    ################################### Replace the V values here (Minimal AoSI)
+    a, b, c = 6.1, 6, 8 #→ mean=0.030, most_common=0, cost = 303
+    if compute_new_V:
+        a = a1
+        b = b1
+        c = c1
+
     AoSI2, cost2, _, _, idle_actions2, sparse_actions2, dense_actions2 = sim_lya(num_steps, a, b, c)
-    a, b, c = 1.2, 0, 5  # → mean = 1.020, most_common = 0, cost = 94
+    ################################### Replace the V values here (Minimal Cost)
+    a, b, c = 0.1, 2, 8 #→ mean=1.089, most_common=0, cost = 100
+    if compute_new_V:
+        a = a2
+        b = b2
+        c = c2
+
     AoSI3, cost3, _, _, idle_actions3, sparse_actions3, dense_actions3 = sim_lya(num_steps, a, b, c)
-    a, b, c = 0.5, 1, 4  # → mean=0.782, cost=113, combined_score=0.329
+    ################################### Replace the V values here (Balanced)
+    a, b, c = 4.0, 14, 38  #→ mean=0.248, cost=172, combined_score=0.423
+    if compute_new_V:
+        a = a3
+        b = b3
+        c = c3
+
     AoSI4, cost4, _, _, idle_actions4, sparse_actions4, dense_actions4 = sim_lya(num_steps, a, b, c)
 
     stand = [AoSI1, cost1, idle_actions1, sparse_actions1, dense_actions1]

@@ -210,3 +210,40 @@ python plotter.py
 ```bash
 python thesis.py
 ```
+
+### Running the comparison
+The All In One class is made spacifically to run all the plots, functions and methdos at once, with the same random values 
+(same seed, with a random generator resetting every time to produce equal values for each function). 
+The class will return a lot of plots. Spacifically they will provide distribution and AoSI for each of the functions (Original Paper, F & G Functions, Lyapunof function (Standard, Min-Cost, Min-AoSI, Balanced)).
+The class will also return a few comparison plots, comparing each value (Cost, AoSI, #Idle, #Sparse. #Dense), as well as a single plot comparing everything.
+
+ATTANTION!!!! At the top of the main method is a variable "compute_new_V". Setting this to true means that it will optimize the V values for
+the spacific inputs (number of steps, p,q,rho,r0,r1,lambda1,lambda2) currently provided. It will also take a long time to complete, so be adviced that it is only 
+for extreme precition (The number in find_optimal_V() is the number of threads, default = 4)
+
+Once executed once, the results will be displayed looking something like this: 
+```python
+    # AoSI
+    #a, b, c = 2.9, 13, 1 # → mean = 0.257, most_common = 0, cost = 204
+    #a, b, c = 2.7, 4, -6 # → mean = 0.267, most_common = 0, cost = 204
+    #a, b, c = 3.5, 7, 0 # → mean = 0.267, most_common = 0, cost = 201
+    #a, b, c = 1.6, 7, -9 # → mean = 0.277, most_common = 0, cost = 212
+    # Cost
+    #a, b, c = 1.2, 0, 5  # → mean = 1.020, most_common = 0, cost = 94
+    #a, b, c = 0.0, 4, -2 # → mean = 1.040, most_common = 0, cost = 95
+    #a, b, c = 2.9, 0, -10 # → mean = 1.010, most_common = 0, cost = 95
+    #a, b, c = 2.7, 0, 5 # → mean = 1.040, most_common = 0, cost = 97
+    #*Top 10 most balanced values(mean and cost):
+    #a, b, c = 0.5, 1, 4  # → mean=0.782, cost=113, combined_score=0.329
+    #a, b, c = 1.2, 1, 5  # → mean=0.782, cost=115, combined_score=0.339
+    #a, b, c = 1.2, 0, 5  # → mean=1.020, cost=94, combined_score=0.345
+    #a, b, c = 2.9, 0, -10  # → mean=1.010, cost=95, combined_score=0.346
+```
+You can then take the values exactly as they are, comment out the unused once, and only have one value triplet uncompied, and replace the
+once in the main method with them. There are two instances where this has to be done, once at the very top, and once relatifly in the middle.
+Each of these positions is marked with
+**Variables**
+################################### Replace the V values here (which one)
+
+Make sure to only paste the fitting values in each position, otherwise it will mess up the plots.
+

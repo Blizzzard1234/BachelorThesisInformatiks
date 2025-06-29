@@ -252,7 +252,7 @@ def find_optimal_V():
     results = []
     for a in np.arange(0, 5, 0.1):  # a value
         for b in range(0, 15, 1):  # integer range is fine
-            for c in range(-10, 10, 1):
+            for c in range(0, 20, 1):
                 st, actions = run_sim_3(100, a, b, c)
                 actions = np.array(actions)
                 st = np.array(st)
