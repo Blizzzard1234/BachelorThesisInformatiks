@@ -57,6 +57,7 @@ def get_transition_probs(st):
 
 def stable_unstable(st, dt, prs):
     # Determine the next state based on the calculated probability
+    #TODO split the 3 sections (package recived, stabalizes, spontanious stabalisation with r_i) into 3 parts, each in row, with seperate probabilities,
     if rng.random() < prs[dt]:
         return st + 1
     else:
@@ -369,6 +370,15 @@ def stabilization_time(S_states, threshold=1, window=20):
 
 
 if __name__ == "__main__":
+#TODO add an average cost, for each time step, then make a grah that plots them, so I should get a courve that converges to the average cost per step (cost/number of time steps)
+#so have the average cost or each point
+#Have a covergence rate, to determin how long the average cost takes to stabalizes to its overall average value
+#TODO also, compare the time it takes for the cost to stabalize with the time it takes for the sysytem to stabalize.
+#TODO an array, and at each point in the array, I have the average cost (so cost/num of steps) up to that point
+#TODO do that with m = 50 simulations, then get a single array, each point in the array beeing the average cost
+#up to that point, with it beeing this average, as the average of it in all m = 50 different runs
+#TODO also do the same for AoSI
+
 
     num_steps = 100
 
