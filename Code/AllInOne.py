@@ -356,7 +356,7 @@ def plot_state_distribution(S_states, name):
     mean_val = sum(S_states) / len(S_states)
 
     plt.figure(figsize=(10, 5))
-    sns.histplot(S_states, kde=True, bins=range(min(S_states), max(S_states) + 2),
+    sns.histplot(S_states, kde=False, bins=range(min(S_states), max(S_states) + 2),
                  color='skyblue', edgecolor='black')
 
     # Add average line

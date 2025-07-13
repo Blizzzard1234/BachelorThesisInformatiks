@@ -39,6 +39,9 @@ if RANDOM_SEED is not None:
     rng = random.Random(RANDOM_SEED)
 else:
     rng = random.Random()
+
+
+
 # this function calculates the next step. it uses the F function
 def get_transition_probs(st):
     if st == 0:
@@ -368,14 +371,18 @@ def plot_state_distribution(S_states):
     mean_val = sum(S_states) / len(S_states)
 
     plt.figure(figsize=(10, 5))
-    sns.histplot(S_states, kde=True, bins=range(min(S_states), max(S_states) + 2),
-                 color='skyblue', edgecolor='black')
+    sns.histplot(S_states, kde=False, bins=range(min(S_states), max(S_states) + 2), color='skyblue', edgecolor='black')
 
     # Add average line
     plt.axvline(mean_val, color='red', linestyle='--', linewidth=1.5, label=f'Mean = {mean_val:.2f}')
 
     # Plot styling
-    plt.title("Distribution of Age of System Instability (S(t))", fontsize=14)
+
+    title = f"Distribution of Age of System Instability (S(t))"
+    if mode == 3:
+        title += f' Over Time with V(st) = {a}x^{b} + x*{c}'
+
+    plt.suptitle(title, fontsize=16)
     plt.xlabel("S(t) Value", fontsize=12)
     plt.ylabel("Frequency", fontsize=12)
     plt.grid(True, linestyle='--', alpha=0.6)
@@ -390,14 +397,99 @@ def stabilization_time(S_states, threshold=1, window=20):
     return len(S_states)
 
 
+def plot_cost_with_convergence(cost_array, num_steps, fun, epsilon=1e-2, window=5):
+    time = np.arange(num_steps)
+
+    # Find convergence point: where the cost stops changing significantly
+    # We'll check when the absolute difference between consecutive costs falls below epsilon
+    diffs = np.abs(np.diff(cost_array))
+    convergence_indices = 0
+    for i in range(len(diffs) - window):
+        if np.all(diffs[i:i + window] < epsilon):
+            convergence_indices = i + window  # +window to include that region
+            break
+
+    if convergence_indices > 0:
+        convergence_idx = convergence_indices + 1  # +1 because diff shifts index by 1
+        convergence_value = cost_array[convergence_idx]
+    else:
+        convergence_idx = None
+        convergence_value = None
+
+    plt.figure(figsize=(8, 4))
+    plt.plot(time, cost_array, marker='o', linestyle='-', label='Cost')
+
+    if convergence_idx is not None:
+        plt.axhline(y=convergence_value, color='r', linestyle='--',
+                    label=f'Converged at step {convergence_idx}')
+        plt.axvline(x=convergence_idx, color='r', linestyle=':', alpha=0.7)
+
+    plt.xlabel('Time step')
+    plt.ylabel('Cost')
+    plt.title(f'average cost over 50 iterations over time for function {fun} ')
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+
+def plot_aosi(S_states, actions, fun):
+    action_colors = {
+        0: 'green',  # Idle
+        1: 'orange',  # Compressed
+        2: 'red',  # Uncompressed
+        3: 'black' #for avg run
+    }
+
+    # Build segments for LineCollection
+    points = np.array([range(len(S_states)), S_states]).T.reshape(-1, 1, 2)
+    segments = np.concatenate([points[:-1], points[1:]], axis=1)
+
+    # Map each segment to its corresponding action
+    colors = [action_colors[act] for act in actions[:-1]]
+
+    # Create the plot
+    fig, ax = plt.subplots(figsize=(14, 7))
+
+    # Add colored lines per segment
+    lc = LineCollection(segments, colors=colors, linewidth=2.5)
+    ax.add_collection(lc)
+
+    # Overlay the full S(t) curve as a thin line for readability
+    ax.plot(range(len(S_states)), S_states, color='black', linewidth=0.5, label='S(t) Trace')
+
+    # Add horizontal baseline
+    ax.axhline(y=0, color='red', linestyle=':', linewidth=1, label='S(t) = 0 (Good State)')
+
+    # Styling
+    title = f'Simulated Age of System Instability (S(t)) with {fun}'
+
+    if mode == 3:
+        title += f' Over Time with V(st) = {a}x^{b} + x*{c}'
+
+    ax.set_title(title, fontsize=16)
+    ax.set_xlabel('Time Step', fontsize=12)
+    ax.set_ylabel('S(t) Value', fontsize=12)
+    ax.grid(True, linestyle='--', alpha=0.7)
+    ax.legend(fontsize=10)
+    custom_lines = [
+        Line2D([0], [0], color='green', lw=2, label='Idle (0)'),
+        Line2D([0], [0], color='red', lw=2, label='Compressed (1)'),
+        Line2D([0], [0], color='orange', lw=2, label='Uncompressed (2)')
+    ]
+
+    # Add to the existing legend
+    ax.legend(handles=[*custom_lines,
+                       Line2D([0], [0], color='black', lw=0.5, label='S(t) Trace'),
+                       Line2D([0], [0], color='red', lw=1, linestyle=':', label='S(t) = 0 (Good State)')],
+              fontsize=10)
+    plt.tight_layout()
+    plt.show()
+
+
+
+
 if __name__ == "__main__":
-#TODO add an average cost, for each time step, then make a grah that plots them, so I should get a courve that converges to the average cost per step (cost/number of time steps)
-#so have the average cost or each point
-#Have a covergence rate, to determin how long the average cost takes to stabalizes to its overall average value
-#TODO also, compare the time it takes for the cost to stabalize with the time it takes for the sysytem to stabalize.
-#TODO an array, and at each point in the array, I have the average cost (so cost/num of steps) up to that point
-#TODO do that with m = 50 simulations, then get a single array, each point in the array beeing the average cost
-#up to that point, with it beeing this average, as the average of it in all m = 50 different runs
+
 #TODO also do the same for AoSI
 
 
@@ -413,7 +505,7 @@ if __name__ == "__main__":
 
     else:
 
-        n = 2
+        n = 50
         avgs = np.zeros_like(range(0,n), dtype=float)
         #you can run V optimizer and then just copy paste the exact thing here
         a,b,c = 0.5, 2, 1
@@ -427,8 +519,21 @@ if __name__ == "__main__":
         #a, b, c = 0.0, 4, -2 #→ mean = 1.040, most_common = 0, cost = 95
         #a, b, c = 2.9, 0, -10 #→ mean = 1.010, most_common = 0, cost = 95
         #a, b, c = 2.7, 0, 5 #→ mean = 1.040, most_common = 0, cost = 97
-        for i in range(n):
 
+
+
+        if mode == 1:
+            fun = "F-Function"
+        elif mode == 2:
+            fun = "G-Function"
+        elif mode == 3:
+            fun = "Lyapunov drivt method"
+        else:
+            fun = "error"
+
+        arr_cost = np.zeros((num_steps, 0), dtype=np.float32)
+        arr_aosi = np.zeros((num_steps, 0), dtype=np.float32)
+        for i in range(n):
 
             if mode == 1:
                 S_states, actions = run_sim_1(num_steps)
@@ -439,8 +544,40 @@ if __name__ == "__main__":
             else:
                 raise ValueError("Wrong mode selected.")
             avgs[i] = (sum(S_states) / len(S_states))
+            #addint the actions to the big array
 
+
+            #rewriting states and actions as np arrays with float 32, to save space later
+            aosi = np.array(S_states[:num_steps], dtype=np.float32)
+            acts = np.array(actions, dtype=np.int32)
+            arr_aosi = np.insert(arr_aosi, i, aosi, axis=1)
+
+
+            # Look up transition cost at each point
+            cost_per_state = np.array([0, lambda1, lambda2], dtype=np.float32)
+            state_costs = cost_per_state[acts]
+
+            costs = aosi + state_costs
+            #getting the mean up to each point
+
+            current_cost = np.zeros(num_steps, dtype=np.float32)
+            for j in range(num_steps):
+                current_cost[j] = costs[:j].mean()
+
+            arr_cost = np.insert(arr_cost, i, current_cost, axis=1)
+
+        #making the avg cost array, then deleting the big 2d array to save space
+        avg_cost = arr_cost.mean(axis=1)
+        avg_aosi = arr_aosi.mean(axis = 1)
+        #print(arr_cost)
+        del arr_cost
+
+
+
+        plot_cost_with_convergence(avg_cost, num_steps, fun)
         num_instable = 0
+
+        #del arr_action
 
         for i in S_states:
             if not i == 0:
@@ -468,52 +605,11 @@ if __name__ == "__main__":
         #DONE for lyapunov, in addition to this, also calculate the cost (st + ld1 + ld2) with st = V(st)
         # --- Visualize S(t) over Time ---
 
+        fun1 = fun + f"with one run"
+        fun2 = fun + f"as avg over {n} runs"
         try:
-            action_colors = {
-                0: 'green',  # Idle
-                1: 'orange',  # Compressed
-                2: 'red'  # Uncompressed
-            }
-
-            # Build segments for LineCollection
-            points = np.array([range(len(S_states)), S_states]).T.reshape(-1, 1, 2)
-            segments = np.concatenate([points[:-1], points[1:]], axis=1)
-
-            # Map each segment to its corresponding action
-            colors = [action_colors[act] for act in actions[:-1]]
-
-            # Create the plot
-            fig, ax = plt.subplots(figsize=(14, 7))
-
-            # Add colored lines per segment
-            lc = LineCollection(segments, colors=colors, linewidth=2.5)
-            ax.add_collection(lc)
-
-            # Overlay the full S(t) curve as a thin line for readability
-            ax.plot(range(len(S_states)), S_states, color='black', linewidth=0.5, label='S(t) Trace')
-
-            # Add horizontal baseline
-            ax.axhline(y=0, color='red', linestyle=':', linewidth=1, label='S(t) = 0 (Good State)')
-
-            # Styling
-            ax.set_title(f'Simulated Age of System Instability (S(t)) Over Time with V(st) = {a}x^{b} + x*{c}', fontsize=16)
-            ax.set_xlabel('Time Step', fontsize=12)
-            ax.set_ylabel('S(t) Value', fontsize=12)
-            ax.grid(True, linestyle='--', alpha=0.7)
-            ax.legend(fontsize=10)
-            custom_lines = [
-                Line2D([0], [0], color='green', lw=2, label='Idle (0)'),
-                Line2D([0], [0], color='red', lw=2, label='Compressed (1)'),
-                Line2D([0], [0], color='orange', lw=2, label='Uncompressed (2)')
-            ]
-
-            # Add to the existing legend
-            ax.legend(handles=[*custom_lines,
-                               Line2D([0], [0], color='black', lw=0.5, label='S(t) Trace'),
-                               Line2D([0], [0], color='red', lw=1, linestyle=':', label='S(t) = 0 (Good State)')],
-                      fontsize=10)
-            plt.tight_layout()
-            plt.show()
+            plot_aosi(S_states, actions, fun1)
+            plot_aosi(avg_aosi, np.full(num_steps, 3), fun2)
         except Exception as e:
             print(f"\nError plotting with Matplotlib: {e}")
             print("Please ensure matplotlib is installed (`pip install matplotlib`) if you want to see the plot.")
