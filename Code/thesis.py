@@ -20,7 +20,7 @@ RANDOM_SEED = 123543 # Change or set to None to disable fixed seeding
 h = 1 # variant exponent
 
 
-mode = -1 #-1 = find the optimal V value, 0 = debugging, 1 = with G function, 2 = with F function, 3 = with Lyapunov drift
+mode = 3 #-1 = find the optimal V value, 0 = debugging, 1 = with G function, 2 = with F function, 3 = with Lyapunov drift
 
 
 
@@ -58,10 +58,31 @@ def get_transition_probs(st):
 def stable_unstable(st, dt, prs):
     # Determine the next state based on the calculated probability
     #TODO split the 3 sections (package recived, stabalizes, spontanious stabalisation with r_i) into 3 parts, each in row, with seperate probabilities,
-    if rng.random() < prs[dt]:
+    stable = False
+    #The chance that it is stable
+    # External stabilization attempt with probability rho
+    if stable and rng.random() > r0:
+        stable = False
+
+    # Spontaneous stabilization from unstable state
+    elif not stable and rng.random() > r1:
+        stable = True
+
+        
+    if rng.random() < rho:
+        if dt == 1 and rng.random() < p:  # compressed packet
+            stable = True
+        elif dt == 2 and rng.random() < q:  # uncompressed packet
+            stable = True
+
+    # Destabilize even if just stabilized
+
+
+    if not stable:
         return st + 1
     else:
         return 0
+
 
 def determin_next_F(st):
     g_values = {}  # Dictionary to store G(S, action) values for each action
@@ -395,14 +416,14 @@ if __name__ == "__main__":
         n = 2
         avgs = np.zeros_like(range(0,n), dtype=float)
         #you can run V optimizer and then just copy paste the exact thing here
-
+        a,b,c = 0.5, 2, 1
         #AoSI
         #a, b, c = 2.9, 13, 1 #→ mean = 0.257, most_common = 0, cost = 204
         #a, b, c = 2.7, 4, -6 #→ mean = 0.267, most_common = 0, cost = 204
         #a, b, c = 3.5, 7, 0 #→ mean = 0.267, most_common = 0, cost = 201
         #a, b, c = 1.6, 7, -9# → mean = 0.277, most_common = 0, cost = 212
         #Cost
-        a, b, c = 1.2, 0, 5 #→ mean = 1.020, most_common = 0, cost = 94
+        #a, b, c = 1.2, 0, 5 #→ mean = 1.020, most_common = 0, cost = 94
         #a, b, c = 0.0, 4, -2 #→ mean = 1.040, most_common = 0, cost = 95
         #a, b, c = 2.9, 0, -10 #→ mean = 1.010, most_common = 0, cost = 95
         #a, b, c = 2.7, 0, 5 #→ mean = 1.040, most_common = 0, cost = 97

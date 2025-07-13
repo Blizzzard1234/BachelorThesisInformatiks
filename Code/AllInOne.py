@@ -64,7 +64,26 @@ def get_transition_probs(st):
 
 def stable_unstable(st, dt, prs):
     # Determine the next state based on the calculated probability
-    if rng.random() < prs[dt]:
+    # TODO split the 3 sections (package recived, stabalizes, spontanious stabalisation with r_i) into 3 parts, each in row, with seperate probabilities,
+    stable = False
+    # The chance that it is stable
+    # External stabilization attempt with probability rho
+    if stable and rng.random() > r0:
+        stable = False
+
+    # Spontaneous stabilization from unstable state
+    elif not stable and rng.random() > r1:
+        stable = True
+
+    if rng.random() < rho:
+        if dt == 1 and rng.random() < p:  # compressed packet
+            stable = True
+        elif dt == 2 and rng.random() < q:  # uncompressed packet
+            stable = True
+
+    # Destabilize even if just stabilized
+
+    if not stable:
         return st + 1
     else:
         return 0
