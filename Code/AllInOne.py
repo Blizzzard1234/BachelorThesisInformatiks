@@ -650,7 +650,7 @@ def sim_paper(num_steps):
         ax.axhline(y=0, color='red', linestyle=':', linewidth=1, label='S(t) = 0 (Good State)')
 
         # Styling
-        ax.set_title(f'Simulated Age of System Instability (S(t)) Over Time with V(st) = {a}x^{b} + x*{c} Paper Simulation',
+        ax.set_title(f'Simulated Age of System Instability (S(t)) according to the paper Simulation',
                      fontsize=16)
         ax.set_xlabel('Time Step', fontsize=12)
         ax.set_ylabel('S(t) Value', fontsize=12)
@@ -752,7 +752,7 @@ def sim_GFun(num_steps):
         ax.axhline(y=0, color='red', linestyle=':', linewidth=1, label='S(t) = 0 (Good State)')
 
         # Styling
-        ax.set_title(f'Simulated Age of System Instability (S(t)) Over Time with V(st) = {a}x^{b} + x*{c}. G-Function',
+        ax.set_title(f'Simulated Age of System Instability (S(t)) Over Time according to the G-Function',
                      fontsize=16)
         ax.set_xlabel('Time Step', fontsize=12)
         ax.set_ylabel('S(t) Value', fontsize=12)
@@ -845,7 +845,7 @@ def sim_FFun(num_steps):
         ax.axhline(y=0, color='red', linestyle=':', linewidth=1, label='S(t) = 0 (Good State)')
 
         # Styling
-        ax.set_title(f'Simulated Age of System Instability (S(t)) Over Time with V(st) = {a}x^{b} + x*{c}. F-Function',
+        ax.set_title(f'Simulated Age of System Instability (S(t)) Over Time according to the F-Function',
                      fontsize=16)
         ax.set_xlabel('Time Step', fontsize=12)
         ax.set_ylabel('S(t) Value', fontsize=12)
@@ -937,7 +937,7 @@ def sim_lya(num_steps,a,b,c):
         ax.axhline(y=0, color='red', linestyle=':', linewidth=1, label='S(t) = 0 (Good State)')
 
         # Styling
-        ax.set_title(f'Simulated Age of System Instability (S(t)) Over Time with V(st) = {a}x^{b} + x*{c}. Lyapunov Function',
+        ax.set_title(f'Simulated Age of System Instability (S(t)) Over Time with V(s(t)) = {a}x^{b} + x*{c} according to the Lyapunov Function',
                      fontsize=16)
         ax.set_xlabel('Time Step', fontsize=12)
         ax.set_ylabel('S(t) Value', fontsize=12)
@@ -960,7 +960,7 @@ def sim_lya(num_steps,a,b,c):
         print(f"\nError plotting with Matplotlib: {e}")
         print("Please ensure matplotlib is installed (`pip install matplotlib`) if you want to see the plot.")
 
-    plot_state_distribution(S_states, "Lyapunov Function")
+    plot_state_distribution(S_states, f"Lyapunov Function with V(s(t)) = {a}x^{b} + x*{c}")
 
     return AoSI, cost, actions, S_states, idle_actions, sparse_actions, dense_actions
 

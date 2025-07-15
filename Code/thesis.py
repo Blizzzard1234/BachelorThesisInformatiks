@@ -367,7 +367,7 @@ def has_converged(arr):
 
     return pnt
 
-def plot_state_distribution(S_states):
+def plot_state_distribution(S_states, name):
     mean_val = sum(S_states) / len(S_states)
 
     plt.figure(figsize=(10, 5))
@@ -378,7 +378,7 @@ def plot_state_distribution(S_states):
 
     # Plot styling
 
-    title = f"Distribution of Age of System Instability (S(t))"
+    title = f"Distribution of Age of System Instability (S(t)) over {name}"
     if mode == 3:
         title += f' Over Time with V(st) = {a}x^{b} + x*{c}'
 
@@ -614,4 +614,5 @@ if __name__ == "__main__":
             print(f"\nError plotting with Matplotlib: {e}")
             print("Please ensure matplotlib is installed (`pip install matplotlib`) if you want to see the plot.")
 
-        plot_state_distribution(S_states)
+        plot_state_distribution(S_states, "one run")
+        plot_state_distribution(avg_aosi, f"{n} runs")
