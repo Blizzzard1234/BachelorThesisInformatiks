@@ -30,7 +30,6 @@ mode = 0 #-1 = find the optimal V value, 0 = debugging, 1 = with F function, 2 =
 
 
 
-
 # Derived constants (stable === AOIS = 0; unstable === AOIS > 0)
 ap = r1                          #unstable & IDLE
 bp = r1 * (1 - rho * p)          #unstable & Compressed
