@@ -47,7 +47,6 @@ else:
     rng = random.Random()
 
 
-
 # this function calculates the next step. it uses the F function
 def get_transition_probs(st):
     if st == 0:
