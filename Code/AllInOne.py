@@ -239,7 +239,6 @@ def run_sim_2 (numruns = 1000):
 
 
 
-
 def run_sim_3(num_runs, a = 0.5,  b = 2, c = 0):
     S_history = [0]  # Initialize history with the starting state
     action_history = []
