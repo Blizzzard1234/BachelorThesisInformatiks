@@ -4,6 +4,11 @@ import random
 from matplotlib.collections import LineCollection
 from matplotlib.lines import Line2D
 import seaborn as sns
+import os
+from datetime import datetime
+
+from Code.plotter import MAX_I
+
 ###################### Parameters
 r1 = 0.9 #pr that the state will remain unstable, independently of everything else
 r0 = 0.1 #pr that the state will remain stable, independently of everything else
@@ -18,19 +23,20 @@ V_val = 1 # a constant multiplied with all lambda, except for cost calculation. 
 stabilityMargine = 1
 RANDOM_SEED = 123543 # Change or set to None to disable fixed seeding
 h = 1 # variant exponent
-
-
-mode = 3 #-1 = find the optimal V value, 0 = debugging, 1 = with G function, 2 = with F function, 3 = with Lyapunov drift
+should_save = True
+numeric_calculation = False
+MAX_I = 10000
+mode = 0 #-1 = find the optimal V value, 0 = debugging, 1 = with F function, 2 = with G function, 3 = with Lyapunov drift
 
 
 
 # Derived constants (stable === AOIS = 0; unstable === AOIS > 0)
-a = r1                          #unstable & IDLE
-b = r1 * (1 - rho * p)          #unstable & Compressed
-c = r1 * (1 - rho * q)          #unstable & Uncompressed
-d = 1 - r0                      #stable & IDLE
-e = (1 - r0) * (1 - rho * p)    #stable & Compressed
-f = (1 - r0) * ((1 - rho) + rho * (1 - q) )      #stable &  Uncompressed  this is not the same as the paper, since we also have the propability that we get something
+ap = r1                          #unstable & IDLE
+bp = r1 * (1 - rho * p)          #unstable & Compressed
+cp = r1 * (1 - rho * q)          #unstable & Uncompressed
+dp = 1 - r0                      #stable & IDLE
+ep = (1 - r0) * (1 - rho * p)    #stable & Compressed
+fp = (1 - r0) * ((1 - rho) + rho * (1 - q) )      #stable &  Uncompressed  this is not the same as the paper, since we also have the propability that we get something
 # and deconde it, but it doesnt lead to a stable state ((1-r0) * rho * (1 - q))
 
 
@@ -170,39 +176,176 @@ def pick_lyapunov(st,a,b,c):
     return optimal_action, prs.copy()
 
 
-
-
-
-def run_sim (numruns = 1000):
-    st = 0
-    dt = 0
-
-    n1 = (lambda1 / (r1 * rho * p)) - 1
-    n2 = ((lambda2 - lambda1) / (r1 * rho * (q - p))) - 1
-
-    for run in range(numruns):
-
-        nextmin = determin_next_G(st)
-
-
-        #detirmin if the next interaction stabalizes the system
-        prs = get_transition_probs(st)
-
-        st = stable_unstable(st, nextmin, prs)
-
-
-        #tests
-        if st > 0:
-            if n1 > st and n2 < st:  #this might be the wrong way around. I switched them here since n1 = 1999 and n2 = -1
-                print(f"failure with AoIS: {st}; current action: {dt}")
+# Function to compute stationary distribution u_n(i)
+def compute_un_i(i, n1, n2, un0):
+    if n1 > 0 and n2 > 0:
+        if i == 0:
+            return un0
+        elif 1 <= i <= n1:
+            return dp * ap ** (i - 1) * un0
+        elif n1 < i <= n2:
+            return dp * ap ** (n1 - 1) * bp ** (i - n1) * un0
         else:
-            K = (lambda2 - lambda1) / (q - p)
-            if rho * (1 - r0) < K:
-                if dt != 1:
-                    print(f"failure with AoIS: {st}; current action: {dt}, should be 1")
-            else:
-                if dt != 2:
-                    print(f"failure with AoIS: {st}; current action: {dt}, should be 2")
+            return dp * ap ** (n1 - 1) * bp ** (n2 - n1) * cp ** (i - n2) * un0
+    elif n1 == 0 and n2 > 0:
+        if i == 0:
+            return un0
+        elif 1 <= i <= n2:
+            return ep * bp ** (i - 1) * un0
+        else:
+            return ep * bp ** (n2 - 1) * c ** (i - n2) * un0
+    elif n1 == n2 == 0:
+        if i == 0:
+            return un0
+        else:
+            return fp * cp ** (i - 1) * un0
+    else:
+        raise ValueError("Invalid threshold combination")
+
+
+########################## compute u_n(0)
+def compute_un0(n1, n2):
+    if n1 > 0 and n2 > 0:
+        num = (1 - ap) * (1 - bp) * (1 - cp)
+        den = ((1 - ap + dp) * (1 - cp) * (1 - bp) +
+                       (1 - cp) * (bp - ap) * dp * ap ** (n1 - 1) +
+                       dp * (1 - ap) * (cp - bp) * bp ** (n2 - n1) * ap ** (n1 - 1))
+        return num / den
+    elif n1 == 0 and n2 > 0:
+        num = (1 - bp) * (1 - cp)
+        den = (1 - bp + ep) * (1 - cp) + (cp - bp) * ep * bp ** (n2 - 1)
+        return num / den
+    elif n1 == n2 == 0:
+        return (1 - cp) / (1 - cp + fp)
+    else:
+        raise ValueError("Invalid threshold combination")
+
+
+############### computing sn, once numeric (until MAX_I) and once with the case form from the paper
+def numeric_sn(n1,n2, un0):
+
+    # Compute un(i) for i in range up to MAX_I
+    un = np.array([compute_un_i(i, n1, n2, un0) for i in range(MAX_I)])
+
+    # Cost: sn = sum(i * un(i))
+    sn = sum(i * un[i] for i in range(MAX_I))
+
+    return sn
+
+
+def sn_like_the_paper(n1,n2, un0):
+    if n1 > 0 and n2 > 0:
+        term1 = un0*((dp*(ap**(n1+1)*n1 - n1*ap**(n1) - ap**(n1) + 1)) / ((1-ap)**2))
+        term2 = un0*( (dp*bp*ap**(n1-1) * (bp**(n2-n1) * (bp*n2 - n2 - 1) - bp*n1 + n1 + 1)) / ((1-bp)**2) )
+        term3 = un0*( (dp*cp*bp**(n2-n1) * ap**(n1-1) * (-cp*n2 + n2 +1)) / ((1-cp)**2) )
+        return term1 + term2 + term3
+    elif n1 == 0 and n2 > 0:
+        term1 = un0 * (ep * (bp**(n2 + 1) * n2 - n2 * bp**n2 - bp**n2 + 1)) / ((1 - bp) ** 2)
+        term2 = un0*(ep*cp*bp**(n2-1) * (-cp*n2 + n2 + 1)) / ((1-cp)**2)
+        return term1 + term2
+    elif n1 == n2 == 0:
+        return un0 * fp / ((1-cp)**2)
+    else:
+        raise ValueError("Invalid threshold combination")
+
+
+######################### computing the delta values
+def numeric_delta1(n1,n2, un0):
+    un = np.array([compute_un_i(i, n1, n2, un0) for i in range(n1, n2)])
+    delta1 = sum(un)
+    return delta1
+
+def numeric_delta2(n1,n2, un0):
+    un = np.array([compute_un_i(i, n1, n2, un0) for i in range(n2, n2+MAX_I)])
+    delta1 = sum(un)
+    return delta1
+
+def delta1_like_the_paper(n1,n2, un0):
+    if n1 > 0 and n2 > 0:
+        return un0*dp*ap**(n1 - 1) * ((1 - bp ** (n2 - n1)) / (1 - bp))
+    elif n1 == 0 and n2 > 0:
+        return un0 * (1 + ep * ((1 - bp ** (n2 - 1)) / (1 - bp)))
+    elif n1 == n2 == 0:
+        return 0
+    else:
+        raise ValueError("Invalid threshold combination")
+
+
+def delta2_like_the_paper(n1,n2, un0):
+    if n1 > 0 and n2 > 0:
+        return un0 * dp * ap ** (n1-1) * bp**(n2-n1) / (1-cp)
+    elif n1 == 0 and n2 > 0:
+        return un0 * ep * bp **(n2-1) / (1-cp)
+    elif n1 == n2 == 0:
+        return 1
+    else:
+        raise ValueError("Invalid threshold combination")
+
+
+##################################   F(n1,n2)
+def F_function(n1, n2, un0):
+
+    if(numeric_calculation):
+        sn = numeric_sn(n1,n2,un0)
+        delta1 = numeric_delta1(n1,n2,un0)
+        delta2 = numeric_delta2(n1,n2,un0)
+    else:
+        sn = sn_like_the_paper(n1,n2,un0)
+        delta1 = delta1_like_the_paper(n1,n2,un0)
+        delta2 = delta2_like_the_paper(n1,n2,un0)
+        print(f"delta1: {delta1}; delta2: {delta2}")
+
+
+    # Total cost
+    return sn + lambda1 * delta1 + lambda2 * delta2
+
+
+
+def find_optimal_thresholds(lambda1_val, lambda2_val, max_n1=15, max_n2=25):
+    global lambda1, lambda2
+    lambda1 = lambda1_val
+    lambda2 = lambda2_val
+
+    best_cost = float('inf')
+    best_n1, best_n2 = 0, 0
+
+    #min_ {n1,n2} F(n1,n2)
+    for n1 in range(max_n1):
+        for n2 in range(n1, max_n2):  # must ensure n2 ≥ n1 or it will rise an error
+            un0 = compute_un0(n1,n2)
+            cost = F_function(n1, n2, un0)
+            if cost < best_cost:
+                best_cost = cost
+                best_n1, best_n2 = n1, n2
+
+    return best_n1, best_n2, best_cost
+
+def simulate_paper(n):
+    n1, n2, cost = find_optimal_thresholds(lambda1, lambda2, 50, 50)
+    st = 0
+    S_history = [0]  # Initialize history with the starting state
+    action_history = []
+
+    for i in range(n):
+        next = 0
+        if st <n1 and st < n2:
+            action = 0
+        elif st >= n1 and st < n2:
+            action = 1
+        else:
+            action = 2
+
+        action_history.append(action)
+
+        # 2. Calculate the next state S(t+1) based on the chosen action
+        probs = get_transition_probs(st)
+        next_S = stable_unstable(st, action, probs)
+
+        S_history.append(next_S)
+        st = next_S  # Update current_S for the next iteration
+
+    return S_history, action_history
+
 
 def run_sim_1 (numruns = 1000):
     S_history = [0]  # Initialize history with the starting state
@@ -380,7 +523,7 @@ def plot_state_distribution(S_states, name):
 
     title = f"Distribution of Age of System Instability (S(t)) over {name}"
     if mode == 3:
-        title += f' Over Time with V(st) = {a}x^{b} + x*{c}'
+        title += f'\nOver Time with V(st) = {a}x^{b} + x*{c}'
 
     plt.suptitle(title, fontsize=16)
     plt.xlabel("S(t) Value", fontsize=12)
@@ -388,6 +531,10 @@ def plot_state_distribution(S_states, name):
     plt.grid(True, linestyle='--', alpha=0.6)
     plt.legend()
     plt.tight_layout()
+    if should_save:
+        filename = os.path.join(SAVE_DIR, f"State Distribution for {fun} over {num_steps}.png")
+        plt.savefig(filename)
+        print(f"Saved: {filename}")
     plt.show()
 
 def stabilization_time(S_states, threshold=1, window=20):
@@ -397,7 +544,7 @@ def stabilization_time(S_states, threshold=1, window=20):
     return len(S_states)
 
 
-def plot_cost_with_convergence(cost_array, num_steps, fun, epsilon=1e-2, window=5):
+def plot_cost_with_convergence(cost_array, num_steps, fun,num_avg, epsilon=1e-2, window=500):
     time = np.arange(num_steps)
 
     # Find convergence point: where the cost stops changing significantly
@@ -426,13 +573,17 @@ def plot_cost_with_convergence(cost_array, num_steps, fun, epsilon=1e-2, window=
 
     plt.xlabel('Time step')
     plt.ylabel('Cost')
-    plt.title(f'average cost over 50 iterations over time for function {fun} ')
+    plt.title(f'average cost over {num_avg} iterations \nOver time for function {fun} ')
     plt.legend()
     plt.grid(True)
     plt.tight_layout()
+    if should_save:
+        filename = os.path.join(SAVE_DIR, f"Average cost for {fun} over {num_steps}.png")
+        plt.savefig(filename)
+        print(f"Saved: {filename}")
     plt.show()
 
-def plot_aosi(S_states, actions, fun):
+def plot_aosi(S_states, actions, fun,num_avg):
     action_colors = {
         0: 'green',  # Idle
         1: 'orange',  # Compressed
@@ -464,7 +615,7 @@ def plot_aosi(S_states, actions, fun):
     title = f'Simulated Age of System Instability (S(t)) with {fun}'
 
     if mode == 3:
-        title += f' Over Time with V(st) = {a}x^{b} + x*{c}'
+        title += f'\nOver Time with V(st) = {a}x^{b} + x*{c}'
 
     ax.set_title(title, fontsize=16)
     ax.set_xlabel('Time Step', fontsize=12)
@@ -483,6 +634,10 @@ def plot_aosi(S_states, actions, fun):
                        Line2D([0], [0], color='red', lw=1, linestyle=':', label='S(t) = 0 (Good State)')],
               fontsize=10)
     plt.tight_layout()
+    if should_save:
+        filename = os.path.join(SAVE_DIR, f"AOSI for {fun} over {num_steps}x{num_avg}.png")
+        plt.savefig(filename)
+        print(f"Saved: {filename}")
     plt.show()
 
 
@@ -490,14 +645,30 @@ def plot_aosi(S_states, actions, fun):
 
 if __name__ == "__main__":
 
-#TODO also do the same for AoSI
+    #TODO also do the same for AoSI
+    if mode == 0:
+        if(numeric_calculation):
+            fun = "Paper-Function_calculated_numerically"
+        else:
+            fun = "Paper-Function"
+    elif mode == 1:
+        fun = "F-Function"
+    elif mode == 2:
+        fun = "G-Function"
+    elif mode == 3:
+        fun = "Lyapunov_drift_method"
+    else:
+        fun = "error"
+
+    num_steps = 10000
+    n = 50
+    if should_save:
+        save_folder_timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        SAVE_DIR = f'figures/{save_folder_timestamp}_timesteps_{num_steps}_iterations_{n}_func_{fun}'
+        os.makedirs(SAVE_DIR, exist_ok=True)
 
 
-    num_steps = 100
-
-    if mode < 1:
-        if mode == 0:
-            run_sim(num_steps)
+    if mode < 0:
         if mode == -1:
             find_optimal_V()
 
@@ -505,7 +676,7 @@ if __name__ == "__main__":
 
     else:
 
-        n = 50
+
         avgs = np.zeros_like(range(0,n), dtype=float)
         #you can run V optimizer and then just copy paste the exact thing here
         a,b,c = 0.5, 2, 1
@@ -522,20 +693,15 @@ if __name__ == "__main__":
 
 
 
-        if mode == 1:
-            fun = "F-Function"
-        elif mode == 2:
-            fun = "G-Function"
-        elif mode == 3:
-            fun = "Lyapunov drivt method"
-        else:
-            fun = "error"
+
 
         arr_cost = np.zeros((num_steps, 0), dtype=np.float32)
         arr_aosi = np.zeros((num_steps, 0), dtype=np.float32)
         for i in range(n):
 
-            if mode == 1:
+            if mode == 0:
+                S_states, actions = simulate_paper(num_steps)
+            elif mode == 1:
                 S_states, actions = run_sim_1(num_steps)
             elif mode == 2:
                 S_states, actions = run_sim_2(num_steps)
@@ -562,7 +728,10 @@ if __name__ == "__main__":
 
             current_cost = np.zeros(num_steps, dtype=np.float32)
             for j in range(num_steps):
-                current_cost[j] = costs[:j].mean()
+                if j == 0:
+                    current_cost[j] = 0  # or np.nan, or some default
+                else:
+                    current_cost[j] = costs[:j].mean()
 
             arr_cost = np.insert(arr_cost, i, current_cost, axis=1)
 
@@ -574,7 +743,7 @@ if __name__ == "__main__":
 
 
 
-        plot_cost_with_convergence(avg_cost, num_steps, fun)
+        plot_cost_with_convergence(avg_cost, num_steps, fun, n)
         num_instable = 0
 
         #del arr_action
@@ -605,14 +774,13 @@ if __name__ == "__main__":
         #DONE for lyapunov, in addition to this, also calculate the cost (st + ld1 + ld2) with st = V(st)
         # --- Visualize S(t) over Time ---
 
-        fun1 = fun + f"with one run"
-        fun2 = fun + f"as avg over {n} runs"
+        fun1 = fun + f" with one run"
+        fun2 = fun + f" as avg over {n} runs"
         try:
-            plot_aosi(S_states, actions, fun1)
-            plot_aosi(avg_aosi, np.full(num_steps, 3), fun2)
+            plot_aosi(S_states, actions, fun1, n)
+            plot_aosi(avg_aosi, np.full(num_steps, 3), fun2, n)
         except Exception as e:
             print(f"\nError plotting with Matplotlib: {e}")
             print("Please ensure matplotlib is installed (`pip install matplotlib`) if you want to see the plot.")
 
         plot_state_distribution(S_states, "one run")
-        plot_state_distribution(avg_aosi, f"{n} runs")

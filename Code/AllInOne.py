@@ -8,6 +8,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 import itertools
 import os
+from datetime import datetime
 ###################### Parameters
 r1 = 0.9 #pr that the state will remain unstable, independently of everything else
 r0 = 0.1 #pr that the state will remain stable, independently of everything else
@@ -20,13 +21,14 @@ V_val = 1 # a constant multiplied with all lambda, except for cost calculation. 
 # effect the next step calculation, but not the calculation of the final cost, so it is only a
 #temporary factor to help calculations
 stabilityMargine = 1
-RANDOM_SEED = 123543 # Change or set to None to disable fixed seeding
+RANDOM_SEED = 123545673 # Change or set to None to disable fixed seeding
 h = 1 # variant exponent
-MAX_I = 100  # Should be large enough to approximate infinite sums
+MAX_I = 100000  # Should be large enough to approximate infinite sums
 
 #should it be computed numerically (sum from min -> min + MAX_I) => True; should be calculated using the closed_form version like given in the paper => False
 numeric_calculation = False
-
+show_all_plots = False
+should_save = True
 mode = 3 #-1 = find the optimal V value, 0 = debugging, 1 = with G function, 2 = with F function, 3 = with Lyapunov drift
 
 
@@ -122,6 +124,7 @@ def determin_next_F(st):
 def determin_next_G(st):
     g_values = {}  # Dictionary to store G(S, action) values for each action
 
+
     if st == 0:   #the 1 and 2 are different if the lambda is different
         g_values[0] = 0.0  # G_idle(0) = 0
         g_values[1] = V_val * lambda1 - rho * p * (1 - r0)  # G_sparse(0)
@@ -134,18 +137,7 @@ def determin_next_G(st):
     # Find the action with the minimum G value
     optimal_action = min(g_values, key=g_values.get)
 
-    K = (lambda2 - lambda1) / (q - p)
-    if optimal_action > 0:
-        if st > 0:
-            if K > rho * r1 * (1 + st):
-                optimal_action = 1
-            else:
-                optimal_action = 2
-        else:
-            if K > rho*(1-r0):
-                optimal_action = 1
-            else:
-                optimal_action = 2
+
     return optimal_action, g_values
 
 
@@ -377,13 +369,12 @@ def stabilization_time(S_states, threshold=1, window=20):
             return t
     return len(S_states)
 
-# Derived constants
-a = r1
-b = r1 * (1 - rho * p)
-c = r1 * (1 - rho * q)
-d = 1 - r0
-e = (1 - r0) * (1 - rho * p)
-f = (1 - r0) * (1 - rho)
+ap = r1                          #unstable & IDLE
+bp = r1 * (1 - rho * p)          #unstable & Compressed
+cp = r1 * (1 - rho * q)          #unstable & Uncompressed
+dp = 1 - r0                      #stable & IDLE
+ep = (1 - r0) * (1 - rho * p)    #stable & Compressed
+fp = (1 - r0) * ((1 - rho) + rho * (1 - q) )      #stable &  Uncompressed  this is not the same as the paper, since we also have the propability that we get something
 
 # Function to compute stationary distribution u_n(i)
 def compute_un_i(i, n1, n2, un0):
@@ -391,43 +382,41 @@ def compute_un_i(i, n1, n2, un0):
         if i == 0:
             return un0
         elif 1 <= i <= n1:
-            return d * a ** (i - 1) * un0
+            return dp * ap ** (i - 1) * un0
         elif n1 < i <= n2:
-            return d * a ** (n1 - 1) * b ** (i - n1) * un0
+            return dp * ap ** (n1 - 1) * bp ** (i - n1) * un0
         else:
-            return d * a ** (n1 - 1) * b ** (n2 - n1) * c ** (i - n2) * un0
+            return dp * ap ** (n1 - 1) * bp ** (n2 - n1) * cp ** (i - n2) * un0
     elif n1 == 0 and n2 > 0:
         if i == 0:
             return un0
         elif 1 <= i <= n2:
-            return e * b ** (i - 1) * un0
+            return ep * bp ** (i - 1) * un0
         else:
-            return e * b ** (n2 - 1) * c ** (i - n2) * un0
+            return ep * bp ** (n2 - 1) * c ** (i - n2) * un0
     elif n1 == n2 == 0:
         if i == 0:
             return un0
         else:
-            return f * c ** (i - 1) * un0
+            return fp * cp ** (i - 1) * un0
     else:
         raise ValueError("Invalid threshold combination")
-
-
 
 
 ########################## compute u_n(0)
 def compute_un0(n1, n2):
     if n1 > 0 and n2 > 0:
-        num = (1 - a) * (1 - b) * (1 - c)
-        den = ((1 - a + d) * (1 - c) * (1 - b) +
-                       (1 - c) * (b - a) * d * a ** (n1 - 1) +
-                       d * (1 - a) * (c - b) * b ** (n2 - n1) * a ** (n1 - 1))
+        num = (1 - ap) * (1 - bp) * (1 - cp)
+        den = ((1 - ap + dp) * (1 - cp) * (1 - bp) +
+                       (1 - cp) * (bp - ap) * dp * ap ** (n1 - 1) +
+                       dp * (1 - ap) * (cp - bp) * bp ** (n2 - n1) * ap ** (n1 - 1))
         return num / den
     elif n1 == 0 and n2 > 0:
-        num = (1 - b) * (1 - c)
-        den = (1 - b + e) * (1 - c) + (c - b) * e * b ** (n2 - 1)
+        num = (1 - bp) * (1 - cp)
+        den = (1 - bp + ep) * (1 - cp) + (cp - bp) * ep * bp ** (n2 - 1)
         return num / den
     elif n1 == n2 == 0:
-        return (1 - c) / (1 - c + f)
+        return (1 - cp) / (1 - cp + fp)
     else:
         raise ValueError("Invalid threshold combination")
 
@@ -446,16 +435,16 @@ def numeric_sn(n1,n2, un0):
 
 def sn_like_the_paper(n1,n2, un0):
     if n1 > 0 and n2 > 0:
-        term1 = un0*((d*(a**(n1+1)*n1 - n1*a**(n1) - a**(n1) + 1))/((1-a)**2))
-        term2 = un0*( (d*b*a**(n1-1) * (b**(n2-n1) * (b*n2 - n2 - 1) - b*n1 + n1 + 1)) / ((1-b)**2) )
-        term3 = un0*( (d*c*b**(n2-n1) * a**(n1-1) * (-c*n2 + n2 +1)) / ((1-c)**2) )
+        term1 = un0*((dp*(ap**(n1+1)*n1 - n1*ap**(n1) - ap**(n1) + 1)) / ((1-ap)**2))
+        term2 = un0*( (dp*bp*ap**(n1-1) * (bp**(n2-n1) * (bp*n2 - n2 - 1) - bp*n1 + n1 + 1)) / ((1-bp)**2) )
+        term3 = un0*( (dp*cp*bp**(n2-n1) * ap**(n1-1) * (-cp*n2 + n2 +1)) / ((1-cp)**2) )
         return term1 + term2 + term3
     elif n1 == 0 and n2 > 0:
-        term1 = un0 * (e * (b**(n2 + 1) * n2 - n2 * b**n2 - b**n2 + 1)) / ((1 - b) ** 2)
-        term2 = un0*(e*c*b**(n2-1) * (-c*n2 + n2 + 1)) / ((1-c)**2)
+        term1 = un0 * (ep * (bp**(n2 + 1) * n2 - n2 * bp**n2 - bp**n2 + 1)) / ((1 - bp) ** 2)
+        term2 = un0*(ep*cp*bp**(n2-1) * (-cp*n2 + n2 + 1)) / ((1-cp)**2)
         return term1 + term2
     elif n1 == n2 == 0:
-        return un0 * f / ((1-c)**2)
+        return un0 * fp / ((1-cp)**2)
     else:
         raise ValueError("Invalid threshold combination")
 
@@ -473,9 +462,9 @@ def numeric_delta2(n1,n2, un0):
 
 def delta1_like_the_paper(n1,n2, un0):
     if n1 > 0 and n2 > 0:
-        return un0*d*a**(n1 - 1) * ((1 - b ** (n2 - n1)) / (1 - b))
+        return un0*dp*ap**(n1 - 1) * ((1 - bp ** (n2 - n1)) / (1 - bp))
     elif n1 == 0 and n2 > 0:
-        return un0 * (1 + e * ((1 - b ** (n2 - 1)) / (1 - b)))
+        return un0 * (1 + ep * ((1 - bp ** (n2 - 1)) / (1 - bp)))
     elif n1 == n2 == 0:
         return 0
     else:
@@ -484,13 +473,14 @@ def delta1_like_the_paper(n1,n2, un0):
 
 def delta2_like_the_paper(n1,n2, un0):
     if n1 > 0 and n2 > 0:
-        return un0 * d * a ** (n1-1) * b**(n2-n1) / (1-c)
+        return un0 * dp * ap ** (n1-1) * bp**(n2-n1) / (1-cp)
     elif n1 == 0 and n2 > 0:
-        return un0 * e * b **(n2-1) / (1-c)
+        return un0 * ep * bp **(n2-1) / (1-cp)
     elif n1 == n2 == 0:
         return 1
     else:
         raise ValueError("Invalid threshold combination")
+
 
 
 ##################################   F(n1,n2)
@@ -511,7 +501,7 @@ def F_function(n1, n2, un0):
 
 
 ############################### finding the n1 and n2 values. lambdas have to be given for these since we need either the lambda or the n values
-def find_optimal_thresholds(lambda1_val, lambda2_val, max_n1=15, max_n2=25):
+def find_optimal_thresholds(lambda1_val, lambda2_val, max_n1=100, max_n2=200):
     global lambda1, lambda2
     lambda1 = lambda1_val
     lambda2 = lambda2_val
@@ -606,77 +596,80 @@ def sim_paper(num_steps):
     dense_actions = actions.count(2)
     stab_time = stabilization_time(S_states)
     cost = sparse_actions * lambda1 + dense_actions * lambda2 + num_instable
+    true_cost = sparse_actions * lambda1 + dense_actions * lambda2
     AoSI = avgs.mean()
-    print("\n--- Simulation Summary Paper Function ---")
-    print(f"Total simulation steps: {num_steps}")
-    print(f"Average Age Of System Instability (ADSI): {avgs[-1]:.4f}")
-    print(f"Average Age Of System Instability (ADSI) over {n}: {AoSI:.4f}")
-    print(f"Breakdown of actions taken:")
-    print(f"  Idle (0): {idle_actions} ({idle_actions / num_steps:.2%})")
-    print(f"  Sparse Update (1): {sparse_actions} ({sparse_actions / num_steps:.2%})")
-    print(f"  Dense Update (2): {dense_actions} ({dense_actions / num_steps:.2%})")
-    print(
-        f"Cost: {cost}")  # DONE it should also include the cost of it beeing in a bad state, not just communicvation
-    print(f"Bellman policy (G): stabilizes at t = {stab_time}")
 
-    # DONE for lyapunov, in addition to this, also calculate the cost (st + ld1 + ld2) with st = V(st)
-    # --- Visualize S(t) over Time ---
+    if show_all_plots:
+        print("\n--- Simulation Summary Paper Function ---")
+        print(f"Total simulation steps: {num_steps}")
+        print(f"Average Age Of System Instability (ADSI): {avgs[-1]:.4f}")
+        print(f"Average Age Of System Instability (ADSI) over {n}: {AoSI:.4f}")
+        print(f"Breakdown of actions taken:")
+        print(f"  Idle (0): {idle_actions} ({idle_actions / num_steps:.2%})")
+        print(f"  Sparse Update (1): {sparse_actions} ({sparse_actions / num_steps:.2%})")
+        print(f"  Dense Update (2): {dense_actions} ({dense_actions / num_steps:.2%})")
+        print(
+            f"Cost: {cost}")  # DONE it should also include the cost of it beeing in a bad state, not just communicvation
+        print(f"Bellman policy (G): stabilizes at t = {stab_time}")
 
-    try:
-        action_colors = {
-            0: 'green',  # Idle
-            1: 'orange',  # Compressed
-            2: 'red'  # Uncompressed
-        }
+        # DONE for lyapunov, in addition to this, also calculate the cost (st + ld1 + ld2) with st = V(st)
+        # --- Visualize S(t) over Time ---
 
-        # Build segments for LineCollection
-        points = np.array([range(len(S_states)), S_states]).T.reshape(-1, 1, 2)
-        segments = np.concatenate([points[:-1], points[1:]], axis=1)
+        try:
+            action_colors = {
+                0: 'green',  # Idle
+                1: 'orange',  # Compressed
+                2: 'red'  # Uncompressed
+            }
 
-        # Map each segment to its corresponding action
-        colors = [action_colors[act] for act in actions[:-1]]
+            # Build segments for LineCollection
+            points = np.array([range(len(S_states)), S_states]).T.reshape(-1, 1, 2)
+            segments = np.concatenate([points[:-1], points[1:]], axis=1)
 
-        # Create the plot
-        fig, ax = plt.subplots(figsize=(14, 7))
+            # Map each segment to its corresponding action
+            colors = [action_colors[act] for act in actions[:-1]]
 
-        # Add colored lines per segment
-        lc = LineCollection(segments, colors=colors, linewidth=2.5)
-        ax.add_collection(lc)
+            # Create the plot
+            fig, ax = plt.subplots(figsize=(14, 7))
 
-        # Overlay the full S(t) curve as a thin line for readability
-        ax.plot(range(len(S_states)), S_states, color='black', linewidth=0.5, label='S(t) Trace')
+            # Add colored lines per segment
+            lc = LineCollection(segments, colors=colors, linewidth=2.5)
+            ax.add_collection(lc)
 
-        # Add horizontal baseline
-        ax.axhline(y=0, color='red', linestyle=':', linewidth=1, label='S(t) = 0 (Good State)')
+            # Overlay the full S(t) curve as a thin line for readability
+            ax.plot(range(len(S_states)), S_states, color='black', linewidth=0.5, label='S(t) Trace')
 
-        # Styling
-        ax.set_title(f'Simulated Age of System Instability (S(t)) according to the paper Simulation',
-                     fontsize=16)
-        ax.set_xlabel('Time Step', fontsize=12)
-        ax.set_ylabel('S(t) Value', fontsize=12)
-        ax.grid(True, linestyle='--', alpha=0.7)
-        ax.legend(fontsize=10)
-        custom_lines = [
-            Line2D([0], [0], color='green', lw=2, label='Idle (0)'),
-            Line2D([0], [0], color='red', lw=2, label='Compressed (1)'),
-            Line2D([0], [0], color='orange', lw=2, label='Uncompressed (2)')
-        ]
+            # Add horizontal baseline
+            ax.axhline(y=0, color='red', linestyle=':', linewidth=1, label='S(t) = 0 (Good State)')
 
-        # Add to the existing legend
-        ax.legend(handles=[*custom_lines,
-                           Line2D([0], [0], color='black', lw=0.5, label='S(t) Trace'),
-                           Line2D([0], [0], color='red', lw=1, linestyle=':', label='S(t) = 0 (Good State)')],
-                  fontsize=10)
-        plt.tight_layout()
-        plt.show()
-    except Exception as e:
-        print(f"\nError plotting with Matplotlib: {e}")
-        print("Please ensure matplotlib is installed (`pip install matplotlib`) if you want to see the plot.")
+            # Styling
+            ax.set_title(f'Simulated Age of System Instability (S(t)) according to the paper Simulation',
+                         fontsize=16)
+            ax.set_xlabel('Time Step', fontsize=12)
+            ax.set_ylabel('S(t) Value', fontsize=12)
+            ax.grid(True, linestyle='--', alpha=0.7)
+            ax.legend(fontsize=10)
+            custom_lines = [
+                Line2D([0], [0], color='green', lw=2, label='Idle (0)'),
+                Line2D([0], [0], color='red', lw=2, label='Compressed (1)'),
+                Line2D([0], [0], color='orange', lw=2, label='Uncompressed (2)')
+            ]
 
-    plot_state_distribution(S_states, "Paper Function")
+            # Add to the existing legend
+            ax.legend(handles=[*custom_lines,
+                               Line2D([0], [0], color='black', lw=0.5, label='S(t) Trace'),
+                               Line2D([0], [0], color='red', lw=1, linestyle=':', label='S(t) = 0 (Good State)')],
+                      fontsize=10)
+            plt.tight_layout()
+            plt.show()
+        except Exception as e:
+            print(f"\nError plotting with Matplotlib: {e}")
+            print("Please ensure matplotlib is installed (`pip install matplotlib`) if you want to see the plot.")
+
+        plot_state_distribution(S_states, "Paper Function")
 
 
-    return AoSI, cost, actions, S_states, idle_actions, sparse_actions, dense_actions
+    return AoSI, cost, true_cost, idle_actions, sparse_actions, dense_actions
 
 
 def find_most_common(arr):
@@ -708,76 +701,78 @@ def sim_GFun(num_steps):
     dense_actions = actions.count(2)
     stab_time = stabilization_time(S_states)
     cost = sparse_actions * lambda1 + dense_actions * lambda2 + num_instable
+    true_cost = sparse_actions * lambda1 + dense_actions * lambda2
     AoSI = avgs.mean()
-    print("\n\n--- Simulation Summary G Function---")
-    print(f"Total simulation steps: {num_steps}")
-    print(f"Average Age Of System Instability (ADSI): {avgs[-1]:.4f}")
-    print(f"Average Age Of System Instability (ADSI) over {n}: {AoSI:.4f}")
-    print(f"Breakdown of actions taken:")
-    print(f"  Idle (0): {idle_actions} ({idle_actions / num_steps:.2%})")
-    print(f"  Sparse Update (1): {sparse_actions} ({sparse_actions / num_steps:.2%})")
-    print(f"  Dense Update (2): {dense_actions} ({dense_actions / num_steps:.2%})")
-    print(
-        f"Cost: {cost}")  # DONE it should also include the cost of it beeing in a bad state, not just communicvation
-    print(f"Bellman policy (G): stabilizes at t = {stab_time}")
+    if show_all_plots:
+        print("\n\n--- Simulation Summary G Function---")
+        print(f"Total simulation steps: {num_steps}")
+        print(f"Average Age Of System Instability (ADSI): {avgs[-1]:.4f}")
+        print(f"Average Age Of System Instability (ADSI) over {n}: {AoSI:.4f}")
+        print(f"Breakdown of actions taken:")
+        print(f"  Idle (0): {idle_actions} ({idle_actions / num_steps:.2%})")
+        print(f"  Sparse Update (1): {sparse_actions} ({sparse_actions / num_steps:.2%})")
+        print(f"  Dense Update (2): {dense_actions} ({dense_actions / num_steps:.2%})")
+        print(
+            f"Cost: {cost}")  # DONE it should also include the cost of it beeing in a bad state, not just communicvation
+        print(f"Bellman policy (G): stabilizes at t = {stab_time}")
 
-    # DONE for lyapunov, in addition to this, also calculate the cost (st + ld1 + ld2) with st = V(st)
-    # --- Visualize S(t) over Time ---
+        # DONE for lyapunov, in addition to this, also calculate the cost (st + ld1 + ld2) with st = V(st)
+        # --- Visualize S(t) over Time ---
 
-    try:
-        action_colors = {
-            0: 'green',  # Idle
-            1: 'orange',  # Compressed
-            2: 'red'  # Uncompressed
-        }
+        try:
+            action_colors = {
+                0: 'green',  # Idle
+                1: 'orange',  # Compressed
+                2: 'red'  # Uncompressed
+            }
 
-        # Build segments for LineCollection
-        points = np.array([range(len(S_states)), S_states]).T.reshape(-1, 1, 2)
-        segments = np.concatenate([points[:-1], points[1:]], axis=1)
+            # Build segments for LineCollection
+            points = np.array([range(len(S_states)), S_states]).T.reshape(-1, 1, 2)
+            segments = np.concatenate([points[:-1], points[1:]], axis=1)
 
-        # Map each segment to its corresponding action
-        colors = [action_colors[act] for act in actions[:-1]]
+            # Map each segment to its corresponding action
+            colors = [action_colors[act] for act in actions[:-1]]
 
-        # Create the plot
-        fig, ax = plt.subplots(figsize=(14, 7))
+            # Create the plot
+            fig, ax = plt.subplots(figsize=(14, 7))
 
-        # Add colored lines per segment
-        lc = LineCollection(segments, colors=colors, linewidth=2.5)
-        ax.add_collection(lc)
+            # Add colored lines per segment
+            lc = LineCollection(segments, colors=colors, linewidth=2.5)
+            ax.add_collection(lc)
 
-        # Overlay the full S(t) curve as a thin line for readability
-        ax.plot(range(len(S_states)), S_states, color='black', linewidth=0.5, label='S(t) Trace')
+            # Overlay the full S(t) curve as a thin line for readability
+            ax.plot(range(len(S_states)), S_states, color='black', linewidth=0.5, label='S(t) Trace')
 
-        # Add horizontal baseline
-        ax.axhline(y=0, color='red', linestyle=':', linewidth=1, label='S(t) = 0 (Good State)')
+            # Add horizontal baseline
+            ax.axhline(y=0, color='red', linestyle=':', linewidth=1, label='S(t) = 0 (Good State)')
 
-        # Styling
-        ax.set_title(f'Simulated Age of System Instability (S(t)) Over Time according to the G-Function',
-                     fontsize=16)
-        ax.set_xlabel('Time Step', fontsize=12)
-        ax.set_ylabel('S(t) Value', fontsize=12)
-        ax.grid(True, linestyle='--', alpha=0.7)
-        ax.legend(fontsize=10)
-        custom_lines = [
-            Line2D([0], [0], color='green', lw=2, label='Idle (0)'),
-            Line2D([0], [0], color='red', lw=2, label='Compressed (1)'),
-            Line2D([0], [0], color='orange', lw=2, label='Uncompressed (2)')
-        ]
+            # Styling
+            ax.set_title(f'Simulated Age of System Instability (S(t)) Over Time according to the G-Function',
+                         fontsize=16)
+            ax.set_xlabel('Time Step', fontsize=12)
+            ax.set_ylabel('S(t) Value', fontsize=12)
+            ax.grid(True, linestyle='--', alpha=0.7)
+            ax.legend(fontsize=10)
+            custom_lines = [
+                Line2D([0], [0], color='green', lw=2, label='Idle (0)'),
+                Line2D([0], [0], color='red', lw=2, label='Compressed (1)'),
+                Line2D([0], [0], color='orange', lw=2, label='Uncompressed (2)')
+            ]
 
-        # Add to the existing legend
-        ax.legend(handles=[*custom_lines,
-                           Line2D([0], [0], color='black', lw=0.5, label='S(t) Trace'),
-                           Line2D([0], [0], color='red', lw=1, linestyle=':', label='S(t) = 0 (Good State)')],
-                  fontsize=10)
-        plt.tight_layout()
-        plt.show()
-    except Exception as e:
-        print(f"\nError plotting with Matplotlib: {e}")
-        print("Please ensure matplotlib is installed (`pip install matplotlib`) if you want to see the plot.")
+            # Add to the existing legend
+            ax.legend(handles=[*custom_lines,
+                               Line2D([0], [0], color='black', lw=0.5, label='S(t) Trace'),
+                               Line2D([0], [0], color='red', lw=1, linestyle=':', label='S(t) = 0 (Good State)')],
+                      fontsize=10)
+            plt.tight_layout()
+            plt.show()
+        except Exception as e:
+            print(f"\nError plotting with Matplotlib: {e}")
+            print("Please ensure matplotlib is installed (`pip install matplotlib`) if you want to see the plot.")
 
-    plot_state_distribution(S_states, "G-Function")
+        plot_state_distribution(S_states, "G-Function")
 
-    return AoSI, cost, actions, S_states, idle_actions, sparse_actions, dense_actions
+    return AoSI, cost, true_cost, idle_actions, sparse_actions, dense_actions
 
 
 #G-Function
@@ -801,76 +796,78 @@ def sim_FFun(num_steps):
     dense_actions = actions.count(2)
     stab_time = stabilization_time(S_states)
     cost = sparse_actions * lambda1 + dense_actions * lambda2 + num_instable
+    true_cost = sparse_actions * lambda1 + dense_actions * lambda2
     AoSI = avgs.mean()
-    print("\n\n--- Simulation Summary F Function---")
-    print(f"Total simulation steps: {num_steps}")
-    print(f"Average Age Of System Instability (ADSI): {avgs[-1]:.4f}")
-    print(f"Average Age Of System Instability (ADSI) over {n}: {AoSI:.4f}")
-    print(f"Breakdown of actions taken:")
-    print(f"  Idle (0): {idle_actions} ({idle_actions / num_steps:.2%})")
-    print(f"  Sparse Update (1): {sparse_actions} ({sparse_actions / num_steps:.2%})")
-    print(f"  Dense Update (2): {dense_actions} ({dense_actions / num_steps:.2%})")
-    print(
-        f"Cost: {cost}")  # DONE it should also include the cost of it beeing in a bad state, not just communicvation
-    print(f"Bellman policy (G): stabilizes at t = {stab_time}")
+    if show_all_plots:
+        print("\n\n--- Simulation Summary F Function---")
+        print(f"Total simulation steps: {num_steps}")
+        print(f"Average Age Of System Instability (ADSI): {avgs[-1]:.4f}")
+        print(f"Average Age Of System Instability (ADSI) over {n}: {AoSI:.4f}")
+        print(f"Breakdown of actions taken:")
+        print(f"  Idle (0): {idle_actions} ({idle_actions / num_steps:.2%})")
+        print(f"  Sparse Update (1): {sparse_actions} ({sparse_actions / num_steps:.2%})")
+        print(f"  Dense Update (2): {dense_actions} ({dense_actions / num_steps:.2%})")
+        print(
+            f"Cost: {cost}")  # DONE it should also include the cost of it beeing in a bad state, not just communicvation
+        print(f"Bellman policy (G): stabilizes at t = {stab_time}")
 
-    # DONE for lyapunov, in addition to this, also calculate the cost (st + ld1 + ld2) with st = V(st)
-    # --- Visualize S(t) over Time ---
+        # DONE for lyapunov, in addition to this, also calculate the cost (st + ld1 + ld2) with st = V(st)
+        # --- Visualize S(t) over Time ---
 
-    try:
-        action_colors = {
-            0: 'green',  # Idle
-            1: 'orange',  # Compressed
-            2: 'red'  # Uncompressed
-        }
+        try:
+            action_colors = {
+                0: 'green',  # Idle
+                1: 'orange',  # Compressed
+                2: 'red'  # Uncompressed
+            }
 
-        # Build segments for LineCollection
-        points = np.array([range(len(S_states)), S_states]).T.reshape(-1, 1, 2)
-        segments = np.concatenate([points[:-1], points[1:]], axis=1)
+            # Build segments for LineCollection
+            points = np.array([range(len(S_states)), S_states]).T.reshape(-1, 1, 2)
+            segments = np.concatenate([points[:-1], points[1:]], axis=1)
 
-        # Map each segment to its corresponding action
-        colors = [action_colors[act] for act in actions[:-1]]
+            # Map each segment to its corresponding action
+            colors = [action_colors[act] for act in actions[:-1]]
 
-        # Create the plot
-        fig, ax = plt.subplots(figsize=(14, 7))
+            # Create the plot
+            fig, ax = plt.subplots(figsize=(14, 7))
 
-        # Add colored lines per segment
-        lc = LineCollection(segments, colors=colors, linewidth=2.5)
-        ax.add_collection(lc)
+            # Add colored lines per segment
+            lc = LineCollection(segments, colors=colors, linewidth=2.5)
+            ax.add_collection(lc)
 
-        # Overlay the full S(t) curve as a thin line for readability
-        ax.plot(range(len(S_states)), S_states, color='black', linewidth=0.5, label='S(t) Trace')
+            # Overlay the full S(t) curve as a thin line for readability
+            ax.plot(range(len(S_states)), S_states, color='black', linewidth=0.5, label='S(t) Trace')
 
-        # Add horizontal baseline
-        ax.axhline(y=0, color='red', linestyle=':', linewidth=1, label='S(t) = 0 (Good State)')
+            # Add horizontal baseline
+            ax.axhline(y=0, color='red', linestyle=':', linewidth=1, label='S(t) = 0 (Good State)')
 
-        # Styling
-        ax.set_title(f'Simulated Age of System Instability (S(t)) Over Time according to the F-Function',
-                     fontsize=16)
-        ax.set_xlabel('Time Step', fontsize=12)
-        ax.set_ylabel('S(t) Value', fontsize=12)
-        ax.grid(True, linestyle='--', alpha=0.7)
-        ax.legend(fontsize=10)
-        custom_lines = [
-            Line2D([0], [0], color='green', lw=2, label='Idle (0)'),
-            Line2D([0], [0], color='red', lw=2, label='Compressed (1)'),
-            Line2D([0], [0], color='orange', lw=2, label='Uncompressed (2)')
-        ]
+            # Styling
+            ax.set_title(f'Simulated Age of System Instability (S(t)) Over Time according to the F-Function',
+                         fontsize=16)
+            ax.set_xlabel('Time Step', fontsize=12)
+            ax.set_ylabel('S(t) Value', fontsize=12)
+            ax.grid(True, linestyle='--', alpha=0.7)
+            ax.legend(fontsize=10)
+            custom_lines = [
+                Line2D([0], [0], color='green', lw=2, label='Idle (0)'),
+                Line2D([0], [0], color='red', lw=2, label='Compressed (1)'),
+                Line2D([0], [0], color='orange', lw=2, label='Uncompressed (2)')
+            ]
 
-        # Add to the existing legend
-        ax.legend(handles=[*custom_lines,
-                           Line2D([0], [0], color='black', lw=0.5, label='S(t) Trace'),
-                           Line2D([0], [0], color='red', lw=1, linestyle=':', label='S(t) = 0 (Good State)')],
-                  fontsize=10)
-        plt.tight_layout()
-        plt.show()
-    except Exception as e:
-        print(f"\nError plotting with Matplotlib: {e}")
-        print("Please ensure matplotlib is installed (`pip install matplotlib`) if you want to see the plot.")
+            # Add to the existing legend
+            ax.legend(handles=[*custom_lines,
+                               Line2D([0], [0], color='black', lw=0.5, label='S(t) Trace'),
+                               Line2D([0], [0], color='red', lw=1, linestyle=':', label='S(t) = 0 (Good State)')],
+                      fontsize=10)
+            plt.tight_layout()
+            plt.show()
+        except Exception as e:
+            print(f"\nError plotting with Matplotlib: {e}")
+            print("Please ensure matplotlib is installed (`pip install matplotlib`) if you want to see the plot.")
 
-    plot_state_distribution(S_states, "F-Function")
+        plot_state_distribution(S_states, "F-Function")
 
-    return AoSI, cost, actions, S_states, idle_actions, sparse_actions, dense_actions
+    return AoSI, cost, true_cost,idle_actions, sparse_actions, dense_actions
 
 
 def sim_lya(num_steps,a,b,c):
@@ -893,76 +890,78 @@ def sim_lya(num_steps,a,b,c):
     dense_actions = actions.count(2)
     stab_time = stabilization_time(S_states)
     cost = sparse_actions * lambda1 + dense_actions * lambda2 + num_instable
+    true_cost = sparse_actions * lambda1 + dense_actions * lambda2
     AoSI = avgs.mean()
-    print("\n\n--- Simulation Summary Lyapunov Function---")
-    print(f"Total simulation steps: {num_steps}")
-    print(f"Average Age Of System Instability (ADSI): {avgs[-1]:.4f}")
-    print(f"Average Age Of System Instability (ADSI) over {n}: {AoSI:.4f}")
-    print(f"Breakdown of actions taken:")
-    print(f"  Idle (0): {idle_actions} ({idle_actions / num_steps:.2%})")
-    print(f"  Sparse Update (1): {sparse_actions} ({sparse_actions / num_steps:.2%})")
-    print(f"  Dense Update (2): {dense_actions} ({dense_actions / num_steps:.2%})")
-    print(
-        f"Cost: {cost}")  # DONE it should also include the cost of it beeing in a bad state, not just communicvation
-    print(f"Bellman policy (G): stabilizes at t = {stab_time}")
+    if show_all_plots:
+        print("\n\n--- Simulation Summary Lyapunov Function---")
+        print(f"Total simulation steps: {num_steps}")
+        print(f"Average Age Of System Instability (ADSI): {avgs[-1]:.4f}")
+        print(f"Average Age Of System Instability (ADSI) over {n}: {AoSI:.4f}")
+        print(f"Breakdown of actions taken:")
+        print(f"  Idle (0): {idle_actions} ({idle_actions / num_steps:.2%})")
+        print(f"  Sparse Update (1): {sparse_actions} ({sparse_actions / num_steps:.2%})")
+        print(f"  Dense Update (2): {dense_actions} ({dense_actions / num_steps:.2%})")
+        print(
+            f"Cost: {cost}")  # DONE it should also include the cost of it beeing in a bad state, not just communicvation
+        print(f"Bellman policy (G): stabilizes at t = {stab_time}")
 
-    # DONE for lyapunov, in addition to this, also calculate the cost (st + ld1 + ld2) with st = V(st)
-    # --- Visualize S(t) over Time ---
+        # DONE for lyapunov, in addition to this, also calculate the cost (st + ld1 + ld2) with st = V(st)
+        # --- Visualize S(t) over Time ---
 
-    try:
-        action_colors = {
-            0: 'green',  # Idle
-            1: 'orange',  # Compressed
-            2: 'red'  # Uncompressed
-        }
+        try:
+            action_colors = {
+                0: 'green',  # Idle
+                1: 'orange',  # Compressed
+                2: 'red'  # Uncompressed
+            }
 
-        # Build segments for LineCollection
-        points = np.array([range(len(S_states)), S_states]).T.reshape(-1, 1, 2)
-        segments = np.concatenate([points[:-1], points[1:]], axis=1)
+            # Build segments for LineCollection
+            points = np.array([range(len(S_states)), S_states]).T.reshape(-1, 1, 2)
+            segments = np.concatenate([points[:-1], points[1:]], axis=1)
 
-        # Map each segment to its corresponding action
-        colors = [action_colors[act] for act in actions[:-1]]
+            # Map each segment to its corresponding action
+            colors = [action_colors[act] for act in actions[:-1]]
 
-        # Create the plot
-        fig, ax = plt.subplots(figsize=(14, 7))
+            # Create the plot
+            fig, ax = plt.subplots(figsize=(14, 7))
 
-        # Add colored lines per segment
-        lc = LineCollection(segments, colors=colors, linewidth=2.5)
-        ax.add_collection(lc)
+            # Add colored lines per segment
+            lc = LineCollection(segments, colors=colors, linewidth=2.5)
+            ax.add_collection(lc)
 
-        # Overlay the full S(t) curve as a thin line for readability
-        ax.plot(range(len(S_states)), S_states, color='black', linewidth=0.5, label='S(t) Trace')
+            # Overlay the full S(t) curve as a thin line for readability
+            ax.plot(range(len(S_states)), S_states, color='black', linewidth=0.5, label='S(t) Trace')
 
-        # Add horizontal baseline
-        ax.axhline(y=0, color='red', linestyle=':', linewidth=1, label='S(t) = 0 (Good State)')
+            # Add horizontal baseline
+            ax.axhline(y=0, color='red', linestyle=':', linewidth=1, label='S(t) = 0 (Good State)')
 
-        # Styling
-        ax.set_title(f'Simulated Age of System Instability (S(t)) Over Time with V(s(t)) = {a}x^{b} + x*{c} according to the Lyapunov Function',
-                     fontsize=16)
-        ax.set_xlabel('Time Step', fontsize=12)
-        ax.set_ylabel('S(t) Value', fontsize=12)
-        ax.grid(True, linestyle='--', alpha=0.7)
-        ax.legend(fontsize=10)
-        custom_lines = [
-            Line2D([0], [0], color='green', lw=2, label='Idle (0)'),
-            Line2D([0], [0], color='red', lw=2, label='Compressed (1)'),
-            Line2D([0], [0], color='orange', lw=2, label='Uncompressed (2)')
-        ]
+            # Styling
+            ax.set_title(f'Simulated Age of System Instability (S(t)) Over Time with V(s(t)) = {a}x^{b} + x*{c} according to the Lyapunov Function',
+                         fontsize=16)
+            ax.set_xlabel('Time Step', fontsize=12)
+            ax.set_ylabel('S(t) Value', fontsize=12)
+            ax.grid(True, linestyle='--', alpha=0.7)
+            ax.legend(fontsize=10)
+            custom_lines = [
+                Line2D([0], [0], color='green', lw=2, label='Idle (0)'),
+                Line2D([0], [0], color='red', lw=2, label='Compressed (1)'),
+                Line2D([0], [0], color='orange', lw=2, label='Uncompressed (2)')
+            ]
 
-        # Add to the existing legend
-        ax.legend(handles=[*custom_lines,
-                           Line2D([0], [0], color='black', lw=0.5, label='S(t) Trace'),
-                           Line2D([0], [0], color='red', lw=1, linestyle=':', label='S(t) = 0 (Good State)')],
-                  fontsize=10)
-        plt.tight_layout()
-        plt.show()
-    except Exception as e:
-        print(f"\nError plotting with Matplotlib: {e}")
-        print("Please ensure matplotlib is installed (`pip install matplotlib`) if you want to see the plot.")
+            # Add to the existing legend
+            ax.legend(handles=[*custom_lines,
+                               Line2D([0], [0], color='black', lw=0.5, label='S(t) Trace'),
+                               Line2D([0], [0], color='red', lw=1, linestyle=':', label='S(t) = 0 (Good State)')],
+                      fontsize=10)
+            plt.tight_layout()
+            plt.show()
+        except Exception as e:
+            print(f"\nError plotting with Matplotlib: {e}")
+            print("Please ensure matplotlib is installed (`pip install matplotlib`) if you want to see the plot.")
 
-    plot_state_distribution(S_states, f"Lyapunov Function with V(s(t)) = {a}x^{b} + x*{c}")
+        plot_state_distribution(S_states, f"Lyapunov Function with V(s(t)) = {a}x^{b} + x*{c}")
 
-    return AoSI, cost, actions, S_states, idle_actions, sparse_actions, dense_actions
+    return AoSI, cost, true_cost, idle_actions, sparse_actions, dense_actions
 
 def format_sigfigs(val):
     if val == 0:
@@ -1058,6 +1057,10 @@ def find_optimal_V(num_steps, num_threads=os.cpu_count()):
 
 if __name__ == "__main__":
     num_steps = 10000
+    if should_save:
+        save_folder_timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        SAVE_DIR = f'figures/{save_folder_timestamp}_timesteps_{num_steps}'
+        os.makedirs(SAVE_DIR, exist_ok=True)
 
     ############################################################################################################################################
     ############################################################################################################################################
@@ -1070,10 +1073,15 @@ if __name__ == "__main__":
 
 
 
-    AoSI1, cost1, _, _, idle_actions1, sparse_actions1, dense_actions1 = sim_paper(num_steps)
-    AoSI2, cost2, _, _, idle_actions2, sparse_actions2, dense_actions2 = sim_GFun(num_steps)
-    AoSI3, cost3, _, _, idle_actions3, sparse_actions3, dense_actions3 = sim_FFun(num_steps)
-
+    AoSI1, cost1, true_cost1, idle_actions1, sparse_actions1, dense_actions1 = sim_paper(num_steps)
+    AoSI2, cost2, true_cost2, idle_actions2, sparse_actions2, dense_actions2 = sim_GFun(num_steps)
+    #AoSI3, cost3, true_cost3, idle_actions3, sparse_actions3, dense_actions3 = sim_FFun(num_steps)
+    avg_cost1 = cost1/num_steps
+    avg_msg_cost1 = true_cost1/num_steps
+    cost_through_aosi1 = cost1 - true_cost1
+    avg_cost2 = cost2 / num_steps
+    avg_msg_cost2 = true_cost2 / num_steps
+    cost_through_aosi2 = cost2 - true_cost2
 ################################### Replace the V values here (As many as you like)
     a,b,c = 0.5, 2, 0
     # AoSI
@@ -1093,24 +1101,23 @@ if __name__ == "__main__":
     # a, b, c = 3.4, 14, 19  #→ mean=0.257, cost=172, combined_score=0.429
     # a, b, c = 2.2, 1, 31  #→ mean=0.257, cost=175, combined_score=0.441
 
-    if compute_new_V:
-        a = a3
-        b = b3
-        c = c3
 
-    AoSI4, cost4, _, _, idle_actions4, sparse_actions4, dense_actions4 = sim_lya(num_steps,a,b,c)
 
+    AoSI4, cost4, true_cost4, idle_actions4, sparse_actions4, dense_actions4 = sim_lya(num_steps,0.5,2,0)
+    avg_cost4 = cost4 / num_steps
+    avg_msg_cost4 = true_cost4 / num_steps
+    cost_through_aosi4 = cost4 - true_cost4
     # Actual data (replace these with your real values)
-    paper = [AoSI1, cost1, idle_actions1, sparse_actions1, dense_actions1]
-    g_func = [AoSI2, cost2, idle_actions2, sparse_actions2, dense_actions2]
-    f_func = [AoSI3, cost3, idle_actions3, sparse_actions3, dense_actions3]
-    lyapunov = [AoSI4, cost4, idle_actions4, sparse_actions4, dense_actions4]
+    paper = [AoSI1, cost1,true_cost1, cost_through_aosi1, avg_cost1, avg_msg_cost1]
+    g_func = [AoSI2, cost2,true_cost2, cost_through_aosi2, avg_cost2, avg_msg_cost2]
+    #f_func = [AoSI3, cost3,true_cost3, cost_through_aosi3, avg_cost3, avg_msg_cost3]
+    lyapunov = [AoSI4, cost4,true_cost4, cost_through_aosi4, avg_cost4, avg_msg_cost4]
 
-    labels = ['AoSI', 'Cost', 'Idle', 'Sparse', 'Dense']
-    methods = ['Paper', 'G-Func', 'F-Func', 'Lyapunov']
-    colors = ['#4C72B0', '#55A868', '#C44E52', '#8172B3']
+    labels = ['AoSI', 'Cost','Message Cost', 'Cost through AoSI', 'Average Cost', 'Average Message Cost']
+    methods = ['Paper', 'G-Func', 'Lyapunov']
+    colors = ['#4C72B0', '#55A868', '#8172B3']
 
-    data = np.array([paper, g_func, f_func, lyapunov])
+    data = np.array([paper, g_func, lyapunov])
 
     # Normalize each column (metric) to [0, 1] for comparability
     normalized = (data - data.min(axis=0)) / (data.max(axis=0) - data.min(axis=0) + 1e-9)
@@ -1120,7 +1127,7 @@ if __name__ == "__main__":
 
     fig, ax = plt.subplots(figsize=(10, 6))
 
-    for i in range(4):
+    for i in range(3):
         bars = ax.bar(x + (i - 1.5) * width, normalized[i], width, label=methods[i], color=colors[i])
 
         for j, bar in enumerate(bars):
@@ -1131,16 +1138,20 @@ if __name__ == "__main__":
     ax.set_xticks(x)
     ax.set_xticklabels(labels)
     ax.set_ylabel('Normalized Value')
-    ax.set_title(f'Metric Comparison (Normalized Per Metric). V(s) = {a:.1f} x ^ {b:.1f} + x * {c:.1f}')
+    ax.set_title(f'Metric Comparison (Normalized Per Metric)')
     ax.legend()
     ax.set_ylim(0, 1.2)
     plt.grid(axis='y', linestyle='--', alpha=0.5)
     plt.tight_layout()
+    if should_save:
+        filename = os.path.join(SAVE_DIR, f"Metric Comparison (Normalized Per Metric) most important.png")
+        plt.savefig(filename)
+        print(f"Saved: {filename}")
     plt.show()
 
     ######### INDIVIDUAL PLOTS PER METRIC
     for i, metric in enumerate(labels):
-        values = [paper[i], g_func[i], f_func[i], lyapunov[i]]
+        values = [paper[i], g_func[i], lyapunov[i]]
 
         fig, ax = plt.subplots(figsize=(6, 4))
         bars = ax.bar(methods, values, color=colors)
@@ -1158,54 +1169,74 @@ if __name__ == "__main__":
 
     print("Comparing 4 different values")
 
-    AoSIp, costp, idle_actionsp, sparse_actionsp, dense_actionsp = AoSI1, cost1, idle_actions1, sparse_actions1, dense_actions1
-    AoSIg, costg, idle_actionsg, sparse_actionsg, dense_actionsg = AoSI2, cost2, idle_actions2, sparse_actions2, dense_actions2
-
+    AoSIp, costp,true_costp, idle_actionsp, sparse_actionsp, dense_actionsp = AoSI1, cost1,true_cost1, idle_actions1, sparse_actions1, dense_actions1
+    AoSIg, costg, true_costg, idle_actionsg, sparse_actionsg, dense_actionsg = AoSI2, cost2,true_cost2, idle_actions2, sparse_actions2, dense_actions2
+    avg_costg = costg / num_steps
+    avg_msg_costg = true_costg / num_steps
+    cost_through_aosig = costg - true_costg
+    avg_costp = costp / num_steps
+    avg_msg_costp = true_costp / num_steps
+    cost_through_aosip = costp - true_costp
 
     a, b, c = 0.5, 2, 0
-    AoSI1, cost1, _, _, idle_actions1, sparse_actions1, dense_actions1 = sim_lya(num_steps, a, b, c)
+    fun1 = f'{a}x^{b} + {c}*x'
+    AoSI1, cost1, true_cost1, idle_actions1, sparse_actions1, dense_actions1 = sim_lya(num_steps, a, b, c)
+    avg_cost1 = cost1 / num_steps
+    avg_msg_cost1 = true_cost1 / num_steps
+    cost_through_aosi1 = cost1 - true_cost1
     ################################### Replace the V values here (Minimal AoSI)
     a, b, c = 6.1, 6, 8 #→ mean=0.030, most_common=0, cost = 303
+    fun2 = f'{a}x^{b} + {c}*x'
     if compute_new_V:
         a = a1
         b = b1
         c = c1
 
-    AoSI2, cost2, _, _, idle_actions2, sparse_actions2, dense_actions2 = sim_lya(num_steps, a, b, c)
+    AoSI2, cost2, true_cost2, idle_actions2, sparse_actions2, dense_actions2 = sim_lya(num_steps, a, b, c)
+    avg_cost2 = cost2 / num_steps
+    avg_msg_cost2 = true_cost2 / num_steps
+    cost_through_aosi2 = cost2 - true_cost2
     ################################### Replace the V values here (Minimal Cost)
     a, b, c = 0.1, 2, 8 #→ mean=1.089, most_common=0, cost = 100
+    fun3 = f'{a}x^{b} + {c}*x'
     if compute_new_V:
         a = a2
         b = b2
         c = c2
 
-    AoSI3, cost3, _, _, idle_actions3, sparse_actions3, dense_actions3 = sim_lya(num_steps, a, b, c)
+    AoSI3, cost3, true_cost3, idle_actions3, sparse_actions3, dense_actions3 = sim_lya(num_steps, a, b, c)
+    avg_cost3 = cost3 / num_steps
+    avg_msg_cost3 = true_cost3 / num_steps
+    cost_through_aosi3 = cost3 - true_cost3
     ################################### Replace the V values here (Balanced)
     a, b, c = 4.0, 14, 38  #→ mean=0.248, cost=172, combined_score=0.423
+    fun4 = f'{a}x^{b} + {c}*x'
     if compute_new_V:
         a = a3
         b = b3
         c = c3
 
-    AoSI4, cost4, _, _, idle_actions4, sparse_actions4, dense_actions4 = sim_lya(num_steps, a, b, c)
-
-    stand = [AoSI1, cost1, idle_actions1, sparse_actions1, dense_actions1]
-    minaosi = [AoSI2, cost2, idle_actions2, sparse_actions2, dense_actions2]
-    mincost = [AoSI3, cost3, idle_actions3, sparse_actions3, dense_actions3]
-    avgaosi = [AoSI4, cost4, idle_actions4, sparse_actions4, dense_actions4]
-    gfun = [AoSIg, costg, idle_actionsg, sparse_actionsg, dense_actionsg]
-    pfun = [AoSIp, costp, idle_actionsp, sparse_actionsp, dense_actionsp]
+    AoSI4, cost4, true_cost4, idle_actions4, sparse_actions4, dense_actions4 = sim_lya(num_steps, a, b, c)
+    avg_cost4 = cost4 / num_steps
+    avg_msg_cost4 = true_cost4 / num_steps
+    cost_through_aosi4 = cost4 - true_cost4
+    stand = [AoSI1, cost1,true_cost1, cost_through_aosi1, avg_cost1, avg_msg_cost1]
+    minaosi = [AoSI2, cost2,true_cost2, cost_through_aosi2, avg_cost2, avg_msg_cost2]
+    mincost = [AoSI3, cost3,true_cost3, cost_through_aosi3, avg_cost3, avg_msg_cost3]
+    avgaosi = [AoSI4, cost4,true_cost4, cost_through_aosi4, avg_cost4, avg_msg_cost4]
+    gfun = [AoSIg, costg,true_costg, cost_through_aosig, avg_costg, avg_msg_costg]
+    pfun = [AoSIp, costp,true_costp, cost_through_aosip, avg_costp, avg_msg_costp]
 
     methods = [
-        r'Standard: $V(x) = 0.5 \cdot x^2$',
-        r'Minimize AoSI: $V(x) = 2.9 \cdot x^{13} + x$',
-        r'Minimize cost: $V(x) = 1.2 + 5 \cdot x$',
-        r'Average both: $V(x) = 0.5 \cdot x + 4 \cdot x$',
+        rf'Standard: V(x) = {fun1}',
+        rf'Minimize AoSI: $V(x) = {fun2}',
+        rf'Minimize cost: $V(x) = {fun3}',
+        rf'Average both: $V(x) = {fun4}',
         'G-Function',
         'Original paper method'
     ]
 
-    labels = ['AoSI', 'Cost', 'Idle', 'Sparse', 'Dense']
+    labels = ['AoSI', 'Cost','Message Cost', 'Cost through AoSI', 'Average Cost', 'Average Message Cost']
 
     colors = [
         '#4C72B0',  # blue
@@ -1245,4 +1276,8 @@ if __name__ == "__main__":
     ax.legend()
     plt.grid(axis='y', linestyle='--', alpha=0.5)
     plt.tight_layout()
+    if should_save:
+        filename = os.path.join(SAVE_DIR, f"Comparison of Metrics Across Methods with different Vs.png")
+        plt.savefig(filename)
+        print(f"Saved: {filename}")
     plt.show()
