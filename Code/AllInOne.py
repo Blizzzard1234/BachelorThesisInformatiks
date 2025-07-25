@@ -9,14 +9,15 @@ import threading
 import itertools
 import os
 from datetime import datetime
+import time
 ###################### Parameters
 r1 = 0.9 #pr that the state will remain unstable, independently of everything else
 r0 = 0.1 #pr that the state will remain stable, independently of everything else
 rho = 0.9 # pr that a package was successfully decoded
 p = 0.5 # pr that we become stable when controler recives a compressed message
 q = 0.9  #pr that we become stable when controler recives a uncompressed message
-lambda1 = 1  # Energy cost for compressed
-lambda2 = 3  # Energy cost for uncompressed
+lambda1 = 2  # Energy cost for compressed
+lambda2 = 6  # Energy cost for uncompressed
 V_val = 1 # a constant multiplied with all lambda, except for cost calculation. this will only
 # effect the next step calculation, but not the calculation of the final cost, so it is only a
 #temporary factor to help calculations
@@ -280,7 +281,7 @@ def find_optimal_V():
 
                 for i in st:
                     if not i == 0:
-                        num_instable = num_instable + 1
+                        num_instable = num_instable + i
 
                 cost = lambda1 * num_comp + lambda2 * num_uncomp + num_instable
                 mean_val = st.mean()
@@ -587,7 +588,7 @@ def sim_paper(num_steps):
 
     for i in S_states:
         if not i == 0:
-            num_instable = num_instable + 1
+            num_instable = num_instable + i
 
     idle_actions = actions.count(0)
     sparse_actions = actions.count(1)
@@ -667,7 +668,7 @@ def sim_paper(num_steps):
         plot_state_distribution(S_states, "Paper Function")
 
 
-    return AoSI, cost, true_cost, idle_actions, sparse_actions, dense_actions
+    return AoSI, cost, true_cost, S_states
 
 
 def find_most_common(arr):
@@ -692,7 +693,7 @@ def sim_GFun(num_steps):
 
     for i in S_states:
         if not i == 0:
-            num_instable = num_instable + 1
+            num_instable = num_instable + i
 
     idle_actions = actions.count(0)
     sparse_actions = actions.count(1)
@@ -770,7 +771,7 @@ def sim_GFun(num_steps):
 
         plot_state_distribution(S_states, "G-Function")
 
-    return AoSI, cost, true_cost, idle_actions, sparse_actions, dense_actions
+    return AoSI, cost, true_cost, S_states
 
 
 #G-Function
@@ -787,7 +788,7 @@ def sim_FFun(num_steps):
 
     for i in S_states:
         if not i == 0:
-            num_instable = num_instable + 1
+            num_instable = num_instable + i
 
     idle_actions = actions.count(0)
     sparse_actions = actions.count(1)
@@ -865,7 +866,7 @@ def sim_FFun(num_steps):
 
         plot_state_distribution(S_states, "F-Function")
 
-    return AoSI, cost, true_cost,idle_actions, sparse_actions, dense_actions
+    return AoSI, cost, true_cost,S_states
 
 
 def sim_lya(num_steps,a,b,c):
@@ -881,7 +882,7 @@ def sim_lya(num_steps,a,b,c):
 
     for i in S_states:
         if not i == 0:
-            num_instable = num_instable + 1
+            num_instable = num_instable + i
 
     idle_actions = actions.count(0)
     sparse_actions = actions.count(1)
@@ -959,7 +960,7 @@ def sim_lya(num_steps,a,b,c):
 
         plot_state_distribution(S_states, f"Lyapunov Function with V(s(t)) = {a}x^{b} + x*{c}")
 
-    return AoSI, cost, true_cost, idle_actions, sparse_actions, dense_actions
+    return AoSI, cost, true_cost, S_states
 
 def format_sigfigs(val):
     if val == 0:
@@ -979,8 +980,8 @@ def format_sigfigs(val):
 def find_optimal_V(num_steps, num_threads=os.cpu_count()):
     param_grid = [(a, b, c)
                   for a in np.arange(0.1, 20, 0.1)
-                  for b in range(1, 15)
-                  for c in range(0, 50)]
+                  for b in np.arange(0.1, 10, 0.2)
+                  for c in range(0, 20)]
 
     results = []
     lock = threading.Lock()
@@ -1003,8 +1004,12 @@ def find_optimal_V(num_steps, num_threads=os.cpu_count()):
         num_comp = np.count_nonzero(actions == 1)
         num_uncomp = np.count_nonzero(actions == 2)
         num_instable = np.count_nonzero(st != 0)
+        cost_total = 0
+        for i in st:
+            if not i == 0:
+                cost_total = cost_total + i
 
-        cost = lambda1 * num_comp + lambda2 * num_uncomp + num_instable
+        cost = lambda1 * num_comp + lambda2 * num_uncomp + cost_total
         mean_val = st.mean()
         most_common_val = find_most_common(st)
 
@@ -1014,7 +1019,8 @@ def find_optimal_V(num_steps, num_threads=os.cpu_count()):
             'c': c,
             'mean': mean_val,
             'most_common': most_common_val,
-            'cost': cost
+            'cost': cost,
+            'msg cost': lambda1 * num_comp + lambda2 * num_uncomp
         }
 
     with ThreadPoolExecutor(max_workers=num_threads) as executor:
@@ -1025,17 +1031,11 @@ def find_optimal_V(num_steps, num_threads=os.cpu_count()):
     # Sorting and scoring
     sorted_results_AoSI = sorted(results, key=lambda r: r['mean'])
     sorted_results_cost = sorted(results, key=lambda r: r['cost'])
+    sorted_msg_cost = sorted(results, key=lambda r: r['msg cost'])
 
     means = np.array([r['mean'] for r in results])
     costs = np.array([r['cost'] for r in results])
-    mean_norm = (means - means.min()) / (means.max() - means.min())
-    cost_norm = (costs - costs.min()) / (costs.max() - costs.min())
-    combined_scores = mean_norm + cost_norm
-
-    for i, r in enumerate(results):
-        r['combined_score'] = combined_scores[i]
-
-    sorted_results_combined = sorted(results, key=lambda r: r['combined_score'])
+    msg = np.array([r['msg cost'] for r in results])
 
     print("#*Best values by AoSI:")
     for r in sorted_results_AoSI[:10]:
@@ -1043,18 +1043,60 @@ def find_optimal_V(num_steps, num_threads=os.cpu_count()):
     print("\n#*Best values by Cost:")
     for r in sorted_results_cost[:10]:
         print(f"#a, b, c = {r['a']:.1f}, {r['b']}, {r['c']} #→ mean={r['mean']:.3f}, most_common={r['most_common']}, cost = {r['cost']}")
-    print("\n#*Top 10 most balanced values (mean and cost):")
-    for r in sorted_results_combined[:10]:
-        print(f"#a, b, c = {r['a']:.1f}, {r['b']}, {r['c']}  #→ mean={r['mean']:.3f}, cost={r['cost']}, combined_score={r['combined_score']:.3f}")
+    print("\n#*Top 10 for message cost (mean and cost):")
+    for r in sorted_msg_cost[:10]:
+        print(f"#a, b, c = {r['a']:.1f}, {r['b']}, {r['c']}  #→ mean={r['mean']:.3f}, cost={r['cost']}")
+
 
     return (
         sorted_results_AoSI[0]['a'], sorted_results_AoSI[0]['b'], sorted_results_AoSI[0]['c'],
         sorted_results_cost[0]['a'], sorted_results_cost[0]['b'], sorted_results_cost[0]['c'],
-        sorted_results_combined[0]['a'], sorted_results_combined[0]['b'], sorted_results_combined[0]['c']
+        sorted_msg_cost[0]['a'], sorted_msg_cost[0]['b'], sorted_msg_cost[0]['c']
     )
 
+
+
+def plot_state_comparison(states_list, labels, name="Comparison"):
+    assert len(states_list) == len(labels), "Each dataset must have a label."
+
+    num_datasets = len(states_list)
+    colors = ['skyblue', 'salmon', 'lightgreen', 'plum', 'orange', 'lightgrey']
+    assert num_datasets <= len(colors), "Too many datasets for default colors."
+
+    # Determine common bin range
+    min_val = min(map(min, states_list))
+    max_val = max(map(max, states_list))
+    bins = range(min_val, max_val + 2)
+    bin_centers = np.array(bins[:-1]) + 0.5
+
+    # Compute histogram counts
+    counts = [np.histogram(data, bins=bins)[0] for data in states_list]
+
+    # Adjust bar width and offsets
+    total_width = 0.8  # total width occupied per bin
+    bar_width = total_width / num_datasets
+    offsets = np.linspace(-total_width / 2 + bar_width / 2, total_width / 2 - bar_width / 2, num_datasets)
+
+    # Plot
+    plt.figure(figsize=(14, 6))
+    for i, (hist, label, color) in enumerate(zip(counts, labels, colors)):
+        plt.bar(bin_centers + offsets[i], hist, width=bar_width, label=label, color=color, edgecolor='black')
+
+        # Mean line
+        mean_val = sum(states_list[i]) / len(states_list[i])
+        plt.axvline(mean_val, linestyle='--', color=color, linewidth=1.5, label=f'{label} Mean = {mean_val:.2f}')
+
+    plt.title(f"Comparison of State Distributions: {name}", fontsize=16)
+    plt.xlabel("S(t) Value", fontsize=12)
+    plt.ylabel("Frequency", fontsize=12)
+    plt.grid(True, linestyle='--', alpha=0.5)
+    plt.legend(loc='upper right', bbox_to_anchor=(1.25, 1.0))
+    plt.tight_layout()
+    plt.show()
+
+
 if __name__ == "__main__":
-    num_steps = 10000
+    num_steps = 100000
     if should_save:
         save_folder_timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         SAVE_DIR = f'figures/{save_folder_timestamp}_timesteps_{num_steps}'
@@ -1062,17 +1104,23 @@ if __name__ == "__main__":
 
     ############################################################################################################################################
     ############################################################################################################################################
-    compute_new_V = True  #If you set this to true, it will take a long time to compile!!!! Be warned
+    compute_new_V = False  #If you set this to true, it will take a long time to compile!!!! Be warned
     ############################################################################################################################################
     ############################################################################################################################################
 
     if compute_new_V:
-        a1,b1,c1,a2,b2,c2,a3,b3,c3 = find_optimal_V(100)
+        a1,b1,c1,a2,b2,c2,a3,b3,c3 = find_optimal_V(num_steps)
 
-
-
-    AoSI1, cost1, true_cost1, idle_actions1, sparse_actions1, dense_actions1 = sim_paper(num_steps)
-    AoSI2, cost2, true_cost2, idle_actions2, sparse_actions2, dense_actions2 = sim_GFun(num_steps)
+    start_p = time.perf_counter()
+    AoSI1, cost1, true_cost1, states1 = sim_paper(num_steps)
+    end_p = time.perf_counter()
+    p_duration = start_p - end_p
+    print(f"paper simulation done. Time: {p_duration:.6f} sec")
+    start_g = time.perf_counter()
+    AoSI2, cost2, true_cost2, states2 = sim_GFun(num_steps)
+    end_g = time.perf_counter()
+    g_duration = start_g - end_g
+    print(f"g function simulation done. Time: {g_duration:.6f} sec")
     #AoSI3, cost3, true_cost3, idle_actions3, sparse_actions3, dense_actions3 = sim_FFun(num_steps)
     avg_cost1 = cost1/num_steps
     avg_msg_cost1 = true_cost1/num_steps
@@ -1082,26 +1130,28 @@ if __name__ == "__main__":
     cost_through_aosi2 = cost2 - true_cost2
 ################################### Replace the V values here (As many as you like)
     a,b,c = 0.5, 2, 0
-    # AoSI
-    # a, b, c = 6.1, 6, 8 #→ mean=0.030, most_common=0, cost = 303
-    # a, b, c = 9.3, 1, 25 #→ mean=0.040, most_common=0, cost = 304
-    # a, b, c = 12.7, 7, 42 #→ mean=0.040, most_common=0, cost = 304
-    # a, b, c = 14.4, 10, 34 #→ mean=0.040, most_common=0, cost = 304
-    # Cost
-    # a, b, c = 0.1, 2, 8 #→ mean=1.089, most_common=0, cost = 100
-    # a, b, c = 0.1, 1, 5 #→ mean=1.139, most_common=0, cost = 102
-    # a, b, c = 0.1, 1, 33 #→ mean=1.168, most_common=0, cost = 103
-    # a, b, c = 0.2, 1, 9 #→ mean=1.198, most_common=0, cost = 104
+    # *Best values by AoSI:
+    # a, b, c = 12.4, 0.7, 6 #→ mean=0.181, most_common=0, cost = 61812
+    # a, b, c = 19.5, 5.9, 16 #→ mean=0.181, most_common=0, cost = 61812
+    # a, b, c = 13.4, 6.1, 12 #→ mean=0.182, most_common=0, cost = 61825
+    # a, b, c = 13.7, 4.3, 11 #→ mean=0.183, most_common=0, cost = 61834
+    # *Best values by Cost:
+    # a, b, c = 1.1, 0.7, 10 #→ mean=1.510, most_common=0, cost = 24169
+    # a, b, c = 1.2, 0.9, 0 #→ mean=1.494, most_common=0, cost = 24302
+    # a, b, c = 1.6, 0.7, 14 #→ mean=1.497, most_common=0, cost = 24330
+    # a, b, c = 0.7, 1.1, 13 #→ mean=1.496, most_common=0, cost = 24367
 
-    #*Top 10 most balanced values(mean and cost):
-    # a, b, c = 4.0, 14, 38  #→ mean=0.248, cost=172, combined_score=0.423
-    # a, b, c = 1.9, 1, 46  #→ mean=0.426, cost=150, combined_score=0.426
-    # a, b, c = 3.4, 14, 19  #→ mean=0.257, cost=172, combined_score=0.429
-    # a, b, c = 2.2, 1, 31  #→ mean=0.257, cost=175, combined_score=0.441
+    # *Top 10 for message cost (mean and cost):
+    # a, b, c = 0.6, 0.3, 3  #→ mean=2.279, cost=28045
+    # a, b, c = 0.6, 0.1, 10  #→ mean=2.282, cost=28088
+    # a, b, c = 0.2, 0.1, 4  #→ mean=2.285, cost=28120
+    # a, b, c = 0.7, 0.1, 13  #→ mean=2.286, cost=28137
 
-
-
-    AoSI4, cost4, true_cost4, idle_actions4, sparse_actions4, dense_actions4 = sim_lya(num_steps,0.5,2,0)
+    start_l = time.perf_counter()
+    AoSI4, cost4, true_cost4, states4 = sim_lya(num_steps,0.5,2,0)
+    end_l = time.perf_counter()
+    l_duration = start_l - end_l
+    print(f"lyapunov calculation with 1/2x^2 done. Time: {l_duration:.6f} sec")
     avg_cost4 = cost4 / num_steps
     avg_msg_cost4 = true_cost4 / num_steps
     cost_through_aosi4 = cost4 - true_cost4
@@ -1147,28 +1197,29 @@ if __name__ == "__main__":
         print(f"Saved: {filename}")
     plt.show()
 
-    ######### INDIVIDUAL PLOTS PER METRIC
-    for i, metric in enumerate(labels):
-        values = [paper[i], g_func[i], lyapunov[i]]
+    if show_all_plots:
+        ######### INDIVIDUAL PLOTS PER METRIC
+        for i, metric in enumerate(labels):
+            values = [paper[i], g_func[i], lyapunov[i]]
 
-        fig, ax = plt.subplots(figsize=(6, 4))
-        bars = ax.bar(methods, values, color=colors)
+            fig, ax = plt.subplots(figsize=(6, 4))
+            bars = ax.bar(methods, values, color=colors)
 
-        for j, bar in enumerate(bars):
-            ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + max(values) * 0.02,
-                    format_sigfigs(values[j]), ha='center', va='bottom', fontsize=8)
+            for j, bar in enumerate(bars):
+                ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + max(values) * 0.02,
+                        format_sigfigs(values[j]), ha='center', va='bottom', fontsize=8)
 
-        ax.set_ylabel(metric)
-        ax.set_title(f'{metric} Comparison. V(s) = {a:.1f} x ^ {b:.1f} + x * {c:.1f}')
-        ax.grid(axis='y', linestyle='--', alpha=0.5)
-        plt.tight_layout()
-        plt.show()
+            ax.set_ylabel(metric)
+            ax.set_title(f'{metric} Comparison. V(s) = {a:.1f} x ^ {b:.1f} + x * {c:.1f}')
+            ax.grid(axis='y', linestyle='--', alpha=0.5)
+            plt.tight_layout()
+            plt.show()
 
-
+    plot_state_comparison([states1,states2,states4],  labels=["Paper", "G-Function", "Lyapunov Function"], name = "Paper, G-func, Lyapunov")
     print("Comparing 4 different values")
 
-    AoSIp, costp,true_costp, idle_actionsp, sparse_actionsp, dense_actionsp = AoSI1, cost1,true_cost1, idle_actions1, sparse_actions1, dense_actions1
-    AoSIg, costg, true_costg, idle_actionsg, sparse_actionsg, dense_actionsg = AoSI2, cost2,true_cost2, idle_actions2, sparse_actions2, dense_actions2
+    AoSIp, costp,true_costp = AoSI1, cost1,true_cost1
+    AoSIg, costg, true_costg = AoSI2, cost2,true_cost2
     avg_costg = costg / num_steps
     avg_msg_costg = true_costg / num_steps
     cost_through_aosig = costg - true_costg
@@ -1178,43 +1229,47 @@ if __name__ == "__main__":
 
     a, b, c = 0.5, 2, 0
     fun1 = f'{a}x^{b} + {c}*x'
-    AoSI1, cost1, true_cost1, idle_actions1, sparse_actions1, dense_actions1 = sim_lya(num_steps, a, b, c)
+    AoSI1, cost1, true_cost1, states4 = sim_lya(num_steps, a, b, c)
+    print(f"optimisation for {fun1} done")
     avg_cost1 = cost1 / num_steps
     avg_msg_cost1 = true_cost1 / num_steps
     cost_through_aosi1 = cost1 - true_cost1
     ################################### Replace the V values here (Minimal AoSI)
-    a, b, c = 6.1, 6, 8 #→ mean=0.030, most_common=0, cost = 303
+    a, b, c = 12.4, 0.7, 6 #→ mean=0.181, most_common=0, cost = 61812
     fun2 = f'{a}x^{b} + {c}*x'
     if compute_new_V:
         a = a1
         b = b1
         c = c1
 
-    AoSI2, cost2, true_cost2, idle_actions2, sparse_actions2, dense_actions2 = sim_lya(num_steps, a, b, c)
+    AoSI2, cost2, true_cost2, states5 = sim_lya(num_steps, a, b, c)
+    print(f"optimisation for {fun2} done")
     avg_cost2 = cost2 / num_steps
     avg_msg_cost2 = true_cost2 / num_steps
     cost_through_aosi2 = cost2 - true_cost2
     ################################### Replace the V values here (Minimal Cost)
-    a, b, c = 0.1, 2, 8 #→ mean=1.089, most_common=0, cost = 100
+    a, b, c = 1.1, 0.7, 10 #→ mean=1.510, most_common=0, cost = 24169
     fun3 = f'{a}x^{b} + {c}*x'
     if compute_new_V:
         a = a2
         b = b2
         c = c2
 
-    AoSI3, cost3, true_cost3, idle_actions3, sparse_actions3, dense_actions3 = sim_lya(num_steps, a, b, c)
+    AoSI3, cost3, true_cost3, states6 = sim_lya(num_steps, a, b, c)
+    print(f"optimisation for {fun3} done")
     avg_cost3 = cost3 / num_steps
     avg_msg_cost3 = true_cost3 / num_steps
     cost_through_aosi3 = cost3 - true_cost3
     ################################### Replace the V values here (Balanced)
-    a, b, c = 4.0, 14, 38  #→ mean=0.248, cost=172, combined_score=0.423
+    a, b, c = 0.6, 0.3, 3  #→ mean=2.279, cost=28045
     fun4 = f'{a}x^{b} + {c}*x'
     if compute_new_V:
         a = a3
         b = b3
         c = c3
 
-    AoSI4, cost4, true_cost4, idle_actions4, sparse_actions4, dense_actions4 = sim_lya(num_steps, a, b, c)
+    AoSI4, cost4, true_cost4, states7 = sim_lya(num_steps, a, b, c)
+    print(f"optimisation for {fun4} done")
     avg_cost4 = cost4 / num_steps
     avg_msg_cost4 = true_cost4 / num_steps
     cost_through_aosi4 = cost4 - true_cost4
@@ -1229,7 +1284,7 @@ if __name__ == "__main__":
         rf'Standard: V(x) = {fun1}',
         rf'Minimize AoSI: $V(x) = {fun2}',
         rf'Minimize cost: $V(x) = {fun3}',
-        rf'Average both: $V(x) = {fun4}',
+        rf'Minimize message cost: $V(x) = {fun4}',
         'G-Function',
         'Original paper method'
     ]
@@ -1279,3 +1334,6 @@ if __name__ == "__main__":
         plt.savefig(filename)
         print(f"Saved: {filename}")
     plt.show()
+
+    plot_state_comparison([states1, states2, states4,states5, states6, states7], labels=["Paper", "G-Function", "Lyapunov Function", "Lyapunov Minimize AoSI", "Lyapunov Minimize Cost", "Lyapunov Minimize msg. cost"],
+                          name="All in one")

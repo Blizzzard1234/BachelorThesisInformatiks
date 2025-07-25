@@ -7,7 +7,6 @@ import seaborn as sns
 import os
 from datetime import datetime
 
-from Code.plotter import MAX_I
 
 ###################### Parameters
 r1 = 0.9 #pr that the state will remain unstable, independently of everything else
@@ -15,8 +14,8 @@ r0 = 0.1 #pr that the state will remain stable, independently of everything else
 rho = 0.9 # pr that a package was successfully decoded
 p = 0.5 # pr that we become stable when controler recives a compressed message
 q = 0.9  #pr that we become stable when controler recives a uncompressed message
-lambda1 = 1  # Energy cost for compressed
-lambda2 = 4  # Energy cost for uncompressed
+lambda1 = 2  # Energy cost for compressed
+lambda2 = 6  # Energy cost for uncompressed
 V_val = 1 # a constant multiplied with all lambda, except for cost calculation. this will only
 # effect the next step calculation, but not the calculation of the final cost, so it is only a
 #temporary factor to help calculations
@@ -26,7 +25,7 @@ h = 1 # variant exponent
 should_save = True
 numeric_calculation = False
 MAX_I = 10000
-mode = 0 #-1 = find the optimal V value, 0 = debugging, 1 = with F function, 2 = with G function, 3 = with Lyapunov drift
+mode = 2 #-1 = find the optimal V value, 0 = paper, 1 = with F function, 2 = with G function, 3 = with Lyapunov drift
 
 
 
@@ -293,7 +292,6 @@ def F_function(n1, n2, un0):
         sn = sn_like_the_paper(n1,n2,un0)
         delta1 = delta1_like_the_paper(n1,n2,un0)
         delta2 = delta2_like_the_paper(n1,n2,un0)
-        print(f"delta1: {delta1}; delta2: {delta2}")
 
 
     # Total cost
@@ -322,6 +320,7 @@ def find_optimal_thresholds(lambda1_val, lambda2_val, max_n1=15, max_n2=25):
 
 def simulate_paper(n):
     n1, n2, cost = find_optimal_thresholds(lambda1, lambda2, 50, 50)
+    print(f"threashhold: n1 = {n1}, n2 = {n2}")
     st = 0
     S_history = [0]  # Initialize history with the starting state
     action_history = []
@@ -432,7 +431,7 @@ def find_optimal_V():
 
                 for i in st:
                     if not i == 0:
-                        num_instable = num_instable + 1
+                        num_instable = num_instable + i
 
                 cost = lambda1 * num_comp + lambda2 * num_uncomp + num_instable
                 mean_val = st.mean()
@@ -660,7 +659,7 @@ if __name__ == "__main__":
     else:
         fun = "error"
 
-    num_steps = 10000
+    num_steps = 100
     n = 50
     if should_save:
         save_folder_timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -679,7 +678,7 @@ if __name__ == "__main__":
 
         avgs = np.zeros_like(range(0,n), dtype=float)
         #you can run V optimizer and then just copy paste the exact thing here
-        a,b,c = 0.5, 2, 1
+        a,b,c = 0.5, 2, 0
         #AoSI
         #a, b, c = 2.9, 13, 1 #→ mean = 0.257, most_common = 0, cost = 204
         #a, b, c = 2.7, 4, -6 #→ mean = 0.267, most_common = 0, cost = 204
@@ -711,7 +710,7 @@ if __name__ == "__main__":
                 raise ValueError("Wrong mode selected.")
             avgs[i] = (sum(S_states) / len(S_states))
             #addint the actions to the big array
-
+            print(f"simulation {i} done ({(i/n)*100}%")
 
             #rewriting states and actions as np arrays with float 32, to save space later
             aosi = np.array(S_states[:num_steps], dtype=np.float32)
@@ -740,6 +739,7 @@ if __name__ == "__main__":
         avg_aosi = arr_aosi.mean(axis = 1)
         #print(arr_cost)
         del arr_cost
+        print("All simulations done")
 
 
 
@@ -750,7 +750,7 @@ if __name__ == "__main__":
 
         for i in S_states:
             if not i == 0:
-                num_instable = num_instable + 1
+                num_instable = num_instable + i
 
         idle_actions = actions.count(0)
         sparse_actions = actions.count(1)
