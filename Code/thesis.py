@@ -25,7 +25,7 @@ h = 1 # variant exponent
 should_save = True
 numeric_calculation = False
 MAX_I = 10000
-mode = 2 #-1 = find the optimal V value, 0 = paper, 1 = with F function, 2 = with G function, 3 = with Lyapunov drift
+mode = 3 #-1 = find the optimal V value, 0 = paper, 1 = with F function, 2 = with G function, 3 = with Lyapunov drift
 
 
 
@@ -563,7 +563,7 @@ def plot_cost_with_convergence(cost_array, num_steps, fun,num_avg, epsilon=1e-2,
         convergence_value = None
 
     plt.figure(figsize=(8, 4))
-    plt.plot(time, cost_array, marker='o', linestyle='-', label='Cost')
+    plt.plot(time, cost_array, linestyle='-', label='Cost')
 
     if convergence_idx is not None:
         plt.axhline(y=convergence_value, color='r', linestyle='--',
@@ -614,7 +614,7 @@ def plot_aosi(S_states, actions, fun,num_avg):
     title = f'Simulated Age of System Instability (S(t)) with {fun}'
 
     if mode == 3:
-        title += f'\nOver Time with V(st) = {a}x^{b} + x*{c}'
+        title += f'\nOver Time with V(st) = {a}x^{b} + {c}'
 
     ax.set_title(title, fontsize=16)
     ax.set_xlabel('Time Step', fontsize=12)
@@ -680,12 +680,12 @@ if __name__ == "__main__":
         #you can run V optimizer and then just copy paste the exact thing here
         a,b,c = 0.5, 2, 0
         #AoSI
-        #a, b, c = 2.9, 13, 1 #→ mean = 0.257, most_common = 0, cost = 204
+        #a, b, c = 4.7, 12, 14 #→ mean=0.267, most_common=0, cost = 331
         #a, b, c = 2.7, 4, -6 #→ mean = 0.267, most_common = 0, cost = 204
         #a, b, c = 3.5, 7, 0 #→ mean = 0.267, most_common = 0, cost = 201
         #a, b, c = 1.6, 7, -9# → mean = 0.277, most_common = 0, cost = 212
         #Cost
-        #a, b, c = 1.2, 0, 5 #→ mean = 1.020, most_common = 0, cost = 94
+        #a, b, c = 1.2, 1, 2 #→ mean=1.119, most_common=0, cost = 183
         #a, b, c = 0.0, 4, -2 #→ mean = 1.040, most_common = 0, cost = 95
         #a, b, c = 2.9, 0, -10 #→ mean = 1.010, most_common = 0, cost = 95
         #a, b, c = 2.7, 0, 5 #→ mean = 1.040, most_common = 0, cost = 97
