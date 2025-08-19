@@ -1,19 +1,21 @@
+import math
+from collections import deque
 import numpy as np
 import matplotlib.pyplot as plt
 import random
 from matplotlib.collections import LineCollection
 from matplotlib.lines import Line2D
 import seaborn as sns
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import threading
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
+from tqdm import tqdm
 import itertools
 import os
 from datetime import datetime
 import time
 ###################### Parameters
-r1 = 0.9 #pr that the state will remain unstable, independently of everything else
-r0 = 0.1 #pr that the state will remain stable, independently of everything else
-rho = 0.9 # pr that a package was successfully decoded
+r1 = 0.7 #pr that the state will remain unstable, independently of everything else
+r0 = 0.2 #pr that the state will remain stable, independently of everything else
+rho = 0.7 # pr that a package was successfully decoded
 p = 0.5 # pr that we become stable when controler recives a compressed message
 q = 0.9  #pr that we become stable when controler recives a uncompressed message
 lambda1 = 2  # Energy cost for compressed
@@ -23,7 +25,7 @@ V_val = 1 # a constant multiplied with all lambda, except for cost calculation. 
 #temporary factor to help calculations
 stabilityMargine = 1
 RANDOM_SEED = 123545673 # Change or set to None to disable fixed seeding
-h = 1 # variant exponent
+h = 0 # variant exponent
 MAX_I = 100000  # Should be large enough to approximate infinite sums
 
 #should it be computed numerically (sum from min -> min + MAX_I) => True; should be calculated using the closed_form version like given in the paper => False
@@ -31,7 +33,7 @@ numeric_calculation = False
 show_all_plots = False
 should_save = True
 mode = 3 #-1 = find the optimal V value, 0 = debugging, 1 = with G function, 2 = with F function, 3 = with Lyapunov drift
-
+dynamic = False
 
 
 # Derived constants (stable === AOIS = 0; unstable === AOIS > 0)
@@ -49,24 +51,40 @@ def reset_random():
     global rng
     rng = random.Random(RANDOM_SEED)
 
+
+def change_prob():
+    global r1,r0,rho,p,q
+    r1 = max(0, r1 + np.random.uniform(-0.005, 0.005))
+    r0 = max(0, r0 + np.random.uniform(-0.005, 0.005))
+    rho = max(0, rho + np.random.uniform(-0.005, 0.005))
+    p = max(0, p + np.random.uniform(-0.005, 0.005))
+    q = max(p, q + np.random.uniform(-0.005, 0.005))
 # this function calculates the next step. it uses the F function
 def get_transition_probs(st):
-    if st == 0:
-        return {
-            0: 1 - r0,
-            1: (1 - r0) * (1 - rho * p),
-            2: (1 - r0) * (1 - rho * q)
-        }
+    if not dynamic:
+        if st == 0:
+            return {
+                0: 1 - r0,
+                1: (1 - r0) * (1 - rho * p),
+                2: (1 - r0) * (1 - rho * q)
+            }
+        else:
+            return {
+                0: r1,
+                1: r1 * (1 - p * rho),
+                2: r1 * (1 - q * rho)
+            }
     else:
         return {
-            0: r1,
-            1: r1 * (1 - p * rho),
-            2: r1 * (1 - q * rho)
+            0: sum(queue0) / len(queue0),
+            1: sum(queue1) / len(queue1),
+            2: sum(queue2) / len(queue2)
         }
-
 
 def stable_unstable(st, dt, prs):
     stable = False
+    if dynamic:
+        change_prob()
     # Random change of stability
     if stable and rng.random() > r0:
         stable = False
@@ -232,11 +250,17 @@ def run_sim_2 (numruns = 1000):
 
     return S_history, action_history
 
-
+queue0 = deque(maxlen=100)
+queue1 = deque(maxlen=100)
+queue2 = deque(maxlen=100)
 def run_sim_3(num_runs, a = 0.5,  b = 2, c = 0):
     S_history = [0]  # Initialize history with the starting state
     action_history = []
     st = 0
+
+    queue0.append(1 - r0)
+    queue1.append((1 - r0) * (1 - rho * p))
+    queue2.append((1 - r0) * (1 - rho * q))
     for t in range(num_runs):
         # 1. Determine the optimal action for the current state S(t)
         action, _= pick_lyapunov(st,a,b,c)
@@ -245,6 +269,13 @@ def run_sim_3(num_runs, a = 0.5,  b = 2, c = 0):
         # 2. Calculate the next state S(t+1) based on the chosen action
         probs = get_transition_probs(st)
         next_S = stable_unstable(st, action, probs)
+        if dynamic:
+            if action == 0:
+                queue0.append(1 if next_S > 1 else 0)
+            elif action == 1:
+                queue1.append(1 if next_S > 1 else 0)
+            else:
+                queue2.append(1 if next_S > 1 else 0)
 
         S_history.append(next_S)
         st = next_S  # Update current_S for the next iteration
@@ -263,31 +294,30 @@ def find_optimal_V():
     results = []
     for a in np.arange(0, 5, 0.1):  # a value
         for b in range(0, 15, 1):  # integer range is fine
-            for c in range(-10, 10, 1):
-                st, actions = run_sim_3(100, a, b, c)
-                actions = np.array(actions)
-                st = np.array(st)
+            st, actions = run_sim_3(100, a, b, 0)
+            actions = np.array(actions)
+            st = np.array(st)
 
-                #num_idle = np.count_nonzero(actions == 0)
-                num_comp = np.count_nonzero(actions == 1)
-                num_uncomp = np.count_nonzero(actions == 2)
-                num_instable = 0
+            #num_idle = np.count_nonzero(actions == 0)
+            num_comp = np.count_nonzero(actions == 1)
+            num_uncomp = np.count_nonzero(actions == 2)
+            num_instable = 0
 
-                for i in st:
-                    if not i == 0:
-                        num_instable = num_instable + i
+            for i in st:
+                if not i == 0:
+                    num_instable = num_instable + i
 
-                cost = lambda1 * num_comp + lambda2 * num_uncomp + num_instable
-                mean_val = st.mean()
-                most_common_val = find_most_common(st)
-                results.append({
-                    'a': a,
-                    'b': b,
-                    'c': c,
-                    'mean': mean_val,
-                    'most_common': most_common_val,
-                    'cost' : cost
-                })
+            cost = lambda1 * num_comp + lambda2 * num_uncomp + num_instable
+            mean_val = st.mean()
+            most_common_val = find_most_common(st)
+            results.append({
+                'a': a,
+                'b': b,
+                'c': 0,
+                'mean': mean_val,
+                'most_common': most_common_val,
+                'cost' : cost
+            })
 
     sorted_results_AoSI = sorted(results, key=lambda r: r['mean'])
     sorted_results_cost = sorted(results, key=lambda r: r['cost'])
@@ -309,6 +339,7 @@ def find_optimal_V():
 def V(x, a=0.5, b=2, c=0, h=1):
     try:
         # Force float conversion to avoid issues like string inputs
+        c = 0
         x = float(x)
         a = float(a)
         b = float(b)
@@ -970,85 +1001,74 @@ def format_sigfigs(val):
         return f"{val:.2f}".rstrip("0").rstrip(".")
 
 
+def worker(params):
+    a, b, c, num_steps, lambda1, lambda2 = params
+    st, actions = run_sim_3(num_steps, a, b, c)
+    actions = np.array(actions)
+    st = np.array(st)
 
-def find_optimal_V(num_steps, num_threads=os.cpu_count()):
-    param_grid = [(a, b, c)
-                  for a in np.arange(0.1, 20, 0.1)
-                  for b in np.arange(0.1, 10, 0.2)
-                  for c in range(0, 20)]
+    num_comp = np.count_nonzero(actions == 1)
+    num_uncomp = np.count_nonzero(actions == 2)
 
-    results = []
-    lock = threading.Lock()
-    counter = itertools.count()
+    cost_total = np.sum(st[st != 0])
+    cost = lambda1 * num_comp + lambda2 * num_uncomp + cost_total
+
+    mean_val = st.mean()
+    most_common_val = find_most_common(st)
+
+    return {
+        'a': a,
+        'b': b,
+        'c': c,
+        'mean': mean_val,
+        'most_common': most_common_val,
+        'cost': cost,
+        'msg cost': lambda1 * num_comp + lambda2 * num_uncomp
+    }
+
+def find_optimal_V(num_steps, cpu_fraction=0.8):
+    param_grid = list(itertools.product(
+        np.arange(0.1, 20, 0.1),
+        np.arange(0.1, 10, 0.1),
+        [0]
+    ))
+
     total = len(param_grid)
-    steps =  total*0.01
+    max_procs = max(1, math.floor(os.cpu_count() * cpu_fraction))
+    results = []
 
-    def worker(a, b, c):
-        thread_name = threading.current_thread().name
-        i = next(counter)
+    # Attach extra args for worker
+    params_with_args = [(a, b, c, num_steps, lambda1, lambda2) for (a, b, c) in param_grid]
 
-        if i % steps == 0:
-            with lock:
-                print(f"[{thread_name}] Finished {i} out of {total} parameter combinations...  {(i/total*100):.1f}%")
-
-        st, actions = run_sim_3(num_steps, a, b, c)
-        actions = np.array(actions)
-        st = np.array(st)
-
-        num_comp = np.count_nonzero(actions == 1)
-        num_uncomp = np.count_nonzero(actions == 2)
-        num_instable = np.count_nonzero(st != 0)
-        cost_total = 0
-        for i in st:
-            if not i == 0:
-                cost_total = cost_total + i
-
-        cost = lambda1 * num_comp + lambda2 * num_uncomp + cost_total
-        mean_val = st.mean()
-        most_common_val = find_most_common(st)
-
-        return {
-            'a': a,
-            'b': b,
-            'c': c,
-            'mean': mean_val,
-            'most_common': most_common_val,
-            'cost': cost,
-            'msg cost': lambda1 * num_comp + lambda2 * num_uncomp
-        }
-
-    with ThreadPoolExecutor(max_workers=num_threads) as executor:
-        futures = [executor.submit(worker, a, b, c) for a, b, c in param_grid]
-        for future in as_completed(futures):
+    with ProcessPoolExecutor(max_workers=max_procs) as executor:
+        futures = {executor.submit(worker, p): p for p in params_with_args}
+        for future in tqdm(as_completed(futures), total=total, desc="Parameter sweep", unit="combos"):
             results.append(future.result())
 
-    # Sorting and scoring
     sorted_results_AoSI = sorted(results, key=lambda r: r['mean'])
     sorted_results_cost = sorted(results, key=lambda r: r['cost'])
     sorted_msg_cost = sorted(results, key=lambda r: r['msg cost'])
 
-    means = np.array([r['mean'] for r in results])
-    costs = np.array([r['cost'] for r in results])
-    msg = np.array([r['msg cost'] for r in results])
-
-    print("#*Best values by AoSI:")
+    print("#* Best values by AoSI:")
     for r in sorted_results_AoSI[:10]:
-        print(f"#a, b, c = {r['a']:.1f}, {r['b']}, {r['c']} #→ mean={r['mean']:.3f}, most_common={r['most_common']}, cost = {r['cost']}")
-    print("\n#*Best values by Cost:")
-    for r in sorted_results_cost[:10]:
-        print(f"#a, b, c = {r['a']:.1f}, {r['b']}, {r['c']} #→ mean={r['mean']:.3f}, most_common={r['most_common']}, cost = {r['cost']}")
-    print("\n#*Top 10 for message cost (mean and cost):")
-    for r in sorted_msg_cost[:10]:
-        print(f"#a, b, c = {r['a']:.1f}, {r['b']}, {r['c']}  #→ mean={r['mean']:.3f}, cost={r['cost']}")
+        print(f"# a, b, c = {r['a']:.1f}, {r['b']}, {r['c']} "
+              f"# → mean={r['mean']:.3f}, most_common={r['most_common']}, cost={r['cost']}")
 
+    print("\n#* Best values by Cost:")
+    for r in sorted_results_cost[:10]:
+        print(f"# a, b, c = {r['a']:.1f}, {r['b']}, {r['c']} "
+              f"# → mean={r['mean']:.3f}, most_common={r['most_common']}, cost={r['cost']}")
+
+    print("\n#* Top 10 for message cost (mean and cost):")
+    for r in sorted_msg_cost[:10]:
+        print(f"# a, b, c = {r['a']:.1f}, {r['b']}, {r['c']} "
+              f"# → mean={r['mean']:.3f}, cost={r['cost']}")
 
     return (
         sorted_results_AoSI[0]['a'], sorted_results_AoSI[0]['b'], sorted_results_AoSI[0]['c'],
         sorted_results_cost[0]['a'], sorted_results_cost[0]['b'], sorted_results_cost[0]['c'],
         sorted_msg_cost[0]['a'], sorted_msg_cost[0]['b'], sorted_msg_cost[0]['c']
     )
-
-
 
 def plot_state_comparison(states_list, labels, name="Comparison"):
     assert len(states_list) == len(labels), "Each dataset must have a label."
@@ -1124,25 +1144,44 @@ if __name__ == "__main__":
     cost_through_aosi2 = cost2 - true_cost2
 ################################### Replace the V values here (As many as you like)
     a,b,c = 0.5, 2, 0
-    # *Best values by AoSI:
-    # a, b, c = 12.4, 0.7, 6 #→ mean=0.181, most_common=0, cost = 61812
-    # a, b, c = 19.5, 5.9, 16 #→ mean=0.181, most_common=0, cost = 61812
-    # a, b, c = 13.4, 6.1, 12 #→ mean=0.182, most_common=0, cost = 61825
-    # a, b, c = 13.7, 4.3, 11 #→ mean=0.183, most_common=0, cost = 61834
-    # *Best values by Cost:
-    # a, b, c = 1.1, 0.7, 10 #→ mean=1.510, most_common=0, cost = 24169
-    # a, b, c = 1.2, 0.9, 0 #→ mean=1.494, most_common=0, cost = 24302
-    # a, b, c = 1.6, 0.7, 14 #→ mean=1.497, most_common=0, cost = 24330
-    # a, b, c = 0.7, 1.1, 13 #→ mean=1.496, most_common=0, cost = 24367
+    # * Best values by AoSI:
+    # a, b, c = 18.8, 2.0, 0 # → mean=0.340, most_common=0, cost=633989
+    # a, b, c = 17.5, 5.2, 0 # → mean=0.341, most_common=0, cost=634100
+    # a, b, c = 19.9, 4.6, 0 # → mean=0.341, most_common=0, cost=634108
+    # a, b, c = 19.2, 6.7, 0 # → mean=0.341, most_common=0, cost=634118
+    # a, b, c = 18.7, 9.6, 0 # → mean=0.341, most_common=0, cost=634136
+    # a, b, c = 19.5, 0.9, 0 # → mean=0.341, most_common=0, cost=634138
+    # a, b, c = 16.9, 7.6, 0 # → mean=0.341, most_common=0, cost=634147
+    # a, b, c = 17.9, 6.2, 0 # → mean=0.341, most_common=0, cost=634149
+    # a, b, c = 17.9, 1.0, 0 # → mean=0.342, most_common=0, cost=634159
+    # a, b, c = 17.3, 3.2, 0 # → mean=0.342, most_common=0, cost=634162
 
-    # *Top 10 for message cost (mean and cost):
-    # a, b, c = 0.6, 0.3, 3  #→ mean=2.279, cost=28045
-    # a, b, c = 0.6, 0.1, 10  #→ mean=2.282, cost=28088
-    # a, b, c = 0.2, 0.1, 4  #→ mean=2.285, cost=28120
-    # a, b, c = 0.7, 0.1, 13  #→ mean=2.286, cost=28137
+    # * Best values by Cost:
+    # a, b, c = 1.2, 0.9, 0 # → mean=1.428, most_common=0, cost=186754
+    # a, b, c = 1.6, 0.8, 0 # → mean=1.435, most_common=0, cost=187749
+    # a, b, c = 1.8, 0.7000000000000001, 0 # → mean=1.436, most_common=0, cost=187969
+    # a, b, c = 4.1, 0.2, 0 # → mean=1.439, most_common=0, cost=188118
+    # a, b, c = 2.5, 0.6, 0 # → mean=1.438, most_common=0, cost=188177
+    # a, b, c = 0.7, 1.4000000000000001, 0 # → mean=1.419, most_common=0, cost=188240
+    # a, b, c = 3.4, 0.2, 0 # → mean=1.442, most_common=0, cost=188376
+    # a, b, c = 1.1, 1.1, 0 # → mean=1.431, most_common=0, cost=188401
+    # a, b, c = 1.1, 1.2000000000000002, 0 # → mean=1.421, most_common=0, cost=188414
+    # a, b, c = 2.0, 0.7000000000000001, 0 # → mean=1.439, most_common=0, cost=188499
+
+    # * Top 10 for message cost (mean and cost):
+    # a, b, c = 0.1, 0.2, 0 # → mean=2.068, cost=213369
+    # a, b, c = 0.1, 0.1, 0 # → mean=2.081, cost=214777
+    # a, b, c = 0.2, 0.30000000000000004, 0 # → mean=1.985, cost=207546
+    # a, b, c = 0.3, 0.5, 0 # → mean=1.978, cost=206899
+    # a, b, c = 0.2, 0.5, 0 # → mean=1.981, cost=207269
+    # a, b, c = 0.1, 0.4, 0 # → mean=1.984, cost=207643
+    # a, b, c = 0.2, 0.2, 0 # → mean=1.983, cost=207531
+    # a, b, c = 0.1, 0.8, 0 # → mean=1.988, cost=208104
+    # a, b, c = 0.2, 0.7000000000000001, 0 # → mean=1.986, cost=207912
+    # a, b, c = 0.4, 0.1, 0 # → mean=1.984, cost=207726
 
     start_l = time.perf_counter()
-    AoSI4, cost4, true_cost4, states4 = sim_lya(num_steps,0.5,2,0)
+    AoSI4, cost4, true_cost4, states4 = sim_lya(num_steps,rho * p,1,0)
     end_l = time.perf_counter()
     l_duration = start_l - end_l
     print(f"lyapunov calculation with 1/2x^2 done. Time: {l_duration:.6f} sec")
@@ -1222,28 +1261,38 @@ if __name__ == "__main__":
     cost_through_aosip = costp - true_costp
 
     a, b, c = 0.5, 2, 0
-    fun1 = f'{a}x^{b} + {c}*x'
+    fun1 = f'{a}x^{b}'
     AoSI1, cost1, true_cost1, states4 = sim_lya(num_steps, a, b, c)
     print(f"optimisation for {fun1} done")
     avg_cost1 = cost1 / num_steps
     avg_msg_cost1 = true_cost1 / num_steps
     cost_through_aosi1 = cost1 - true_cost1
+
+    a, b, c = 1, 1, 0
+    fun0 = f'x'
+    AoSI0, cost0, true_cost0, states0 = sim_lya(num_steps, a, b, c)
+    print(f"optimisation for V(x)=x done")
+    avg_cost0 = cost0 / num_steps
+    avg_msg_cost0 = true_cost0 / num_steps
+    cost_through_aosi0 = cost0 - true_cost0
+
+
     ################################### Replace the V values here (Minimal AoSI)
-    a, b, c = 12.4, 0.7, 6 #→ mean=0.181, most_common=0, cost = 61812
-    fun2 = f'{a}x^{b} + {c}*x'
+    a, b, c = 17.7, 2.1, 0 # → mean=0.340, most_common=0, cost=634039
+    fun2 = f'{a}x^{b}'
     if compute_new_V:
         a = a1
         b = b1
         c = c1
-
+    #a, b, c = 1, 1, 0
     AoSI2, cost2, true_cost2, states5 = sim_lya(num_steps, a, b, c)
     print(f"optimisation for {fun2} done")
     avg_cost2 = cost2 / num_steps
     avg_msg_cost2 = true_cost2 / num_steps
     cost_through_aosi2 = cost2 - true_cost2
     ################################### Replace the V values here (Minimal Cost)
-    a, b, c = 1.1, 0.7, 10 #→ mean=1.510, most_common=0, cost = 24169
-    fun3 = f'{a}x^{b} + {c}*x'
+    a, b, c = 3.9, 0.2, 0 # → mean=1.432, most_common=0, cost=187116
+    fun3 = f'{a}x^{b}'
     if compute_new_V:
         a = a2
         b = b2
@@ -1255,8 +1304,8 @@ if __name__ == "__main__":
     avg_msg_cost3 = true_cost3 / num_steps
     cost_through_aosi3 = cost3 - true_cost3
     ################################### Replace the V values here (Balanced)
-    a, b, c = 0.6, 0.3, 3  #→ mean=2.279, cost=28045
-    fun4 = f'{a}x^{b} + {c}*x'
+    a, b, c = 0.1, 0.2, 0 # → mean=2.058, cost=212307
+    fun4 = f'{a}x^{b}'
     if compute_new_V:
         a = a3
         b = b3
@@ -1267,15 +1316,18 @@ if __name__ == "__main__":
     avg_cost4 = cost4 / num_steps
     avg_msg_cost4 = true_cost4 / num_steps
     cost_through_aosi4 = cost4 - true_cost4
-    stand = [AoSI1, cost1,true_cost1, cost_through_aosi1, avg_cost1, avg_msg_cost1]
-    minaosi = [AoSI2, cost2,true_cost2, cost_through_aosi2, avg_cost2, avg_msg_cost2]
-    mincost = [AoSI3, cost3,true_cost3, cost_through_aosi3, avg_cost3, avg_msg_cost3]
-    avgaosi = [AoSI4, cost4,true_cost4, cost_through_aosi4, avg_cost4, avg_msg_cost4]
-    gfun = [AoSIg, costg,true_costg, cost_through_aosig, avg_costg, avg_msg_costg]
-    pfun = [AoSIp, costp,true_costp, cost_through_aosip, avg_costp, avg_msg_costp]
+    #stand = [AoSI1, cost1,true_cost1, cost_through_aosi1, avg_cost1, avg_msg_cost1]
+    stand = [AoSI1, avg_cost1, avg_msg_cost1]
+    linear = [AoSI0, avg_cost0, avg_msg_cost0]
+    minaosi = [AoSI2, avg_cost2, avg_msg_cost2]
+    mincost = [AoSI3, avg_cost3, avg_msg_cost3]
+    avgaosi = [AoSI4, avg_cost4, avg_msg_cost4]
+    gfun = [AoSIg, avg_costg, avg_msg_costg]
+    pfun = [AoSIp, avg_costp, avg_msg_costp]
 
     methods = [
-        rf'Standard: V(x) = {fun1}',
+        rf'Quadratic: V(x) = {fun1}',
+        rf'Linear: V(x) = x',
         rf'Minimize AoSI: $V(x) = {fun2}',
         rf'Minimize cost: $V(x) = {fun3}',
         rf'Minimize message cost: $V(x) = {fun4}',
@@ -1283,7 +1335,8 @@ if __name__ == "__main__":
         'Original paper method'
     ]
 
-    labels = ['AoSI', 'Cost','Message Cost', 'Cost through AoSI', 'Average Cost', 'Average Message Cost']
+    #labels = ['AoSI', 'Cost','Message Cost', 'Cost through AoSI', 'Average Cost', 'Average Message Cost']
+    labels = ['AoSI', 'Average Cost', 'Average Message Cost']
 
     colors = [
         '#4C72B0',  # blue
@@ -1292,22 +1345,24 @@ if __name__ == "__main__":
         '#8172B3',  # purple
         '#CCB974',  # yellow
         '#64B5CD',  # cyan
+        '#c25a00',  # orange
     ]
 
-    data = np.array([stand, minaosi, mincost, avgaosi, gfun, pfun])  # shape: (6 methods, 5 metrics)
+
+    data = np.array([stand, linear ,minaosi, mincost, avgaosi, gfun, pfun])  # shape: (6 methods, 5 metrics)
+    #data = np.array([stand, minaosi, mincost, avgaosi, gfun, pfun])
     data = data.T  # shape becomes (5 metrics, 6 methods) so we have 6 bars per metric
 
     # Normalize each column (i.e., each metric) for fair comparison
-    normalized = (data - data.min(axis=1, keepdims=True)) / (
-                data.max(axis=1, keepdims=True) - data.min(axis=1, keepdims=True) + 1e-9)
-
+    #normalized = (data - data.min(axis=1, keepdims=True)) / (data.max(axis=1, keepdims=True) - data.min(axis=1, keepdims=True) + 1e-9)
+    normalized = data
     x = np.arange(len(labels))  # 5 metric labels
     width = 0.13  # smaller width to fit 6 bars
 
     fig, ax = plt.subplots(figsize=(12, 6))
 
     # Plot 6 bars per metric
-    for i in range(6):
+    for i in range(7):
         offset = (i - 2.5) * width
         bars = ax.bar(x + offset, normalized[:, i], width, label=methods[i], color=colors[i])
         for j, bar in enumerate(bars):
@@ -1317,9 +1372,9 @@ if __name__ == "__main__":
 
     ax.set_xticks(x)
     ax.set_xticklabels(labels)
-    ax.set_ylabel("Normalized Value")
+    ax.set_ylabel(f"Average over {num_steps} time steps")
     ax.set_title("Comparison of Metrics Across Methods")
-    ax.set_ylim(0, 1.2)
+    ax.set_ylim(0,7)
     ax.legend()
     plt.grid(axis='y', linestyle='--', alpha=0.5)
     plt.tight_layout()

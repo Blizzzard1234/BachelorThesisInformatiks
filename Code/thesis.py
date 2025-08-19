@@ -1,17 +1,23 @@
+import math
+
 import numpy as np
 import matplotlib.pyplot as plt
 import random
 from matplotlib.collections import LineCollection
 from matplotlib.lines import Line2D
 import seaborn as sns
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
+from tqdm import tqdm
+import itertools
 import os
 from datetime import datetime
+import time
 
 
 ###################### Parameters
-r1 = 0.9 #pr that the state will remain unstable, independently of everything else
-r0 = 0.1 #pr that the state will remain stable, independently of everything else
-rho = 0.9 # pr that a package was successfully decoded
+r1 = 0.7 #pr that the state will remain unstable, independently of everything else
+r0 = 0.2 #pr that the state will remain stable, independently of everything else
+rho = 0.7 # pr that a package was successfully decoded
 p = 0.5 # pr that we become stable when controler recives a compressed message
 q = 0.9  #pr that we become stable when controler recives a uncompressed message
 lambda1 = 2  # Energy cost for compressed
@@ -415,62 +421,74 @@ def find_most_common(arr):
     return most_common
 
 
-def find_optimal_V():
+def worker(params):
+    a, b, c, num_steps, lambda1, lambda2 = params
+    st, actions = run_sim_3(num_steps, a, b, c)
+    actions = np.array(actions)
+    st = np.array(st)
+
+    num_comp = np.count_nonzero(actions == 1)
+    num_uncomp = np.count_nonzero(actions == 2)
+
+    cost_total = np.sum(st[st != 0])
+    cost = lambda1 * num_comp + lambda2 * num_uncomp + cost_total
+
+    mean_val = st.mean()
+    most_common_val = find_most_common(st)
+
+    return {
+        'a': a,
+        'b': b,
+        'c': c,
+        'mean': mean_val,
+        'most_common': most_common_val,
+        'cost': cost,
+        'msg cost': lambda1 * num_comp + lambda2 * num_uncomp
+    }
+
+def find_optimal_V(num_steps, cpu_fraction=0.8):
+    param_grid = list(itertools.product(
+        np.arange(0.1, 20, 0.1),
+        np.arange(0.1, 10, 0.1),
+        [0]
+    ))
+
+    total = len(param_grid)
+    max_procs = max(1, math.floor(os.cpu_count() * cpu_fraction))
     results = []
-    for a in np.arange(0, 5, 0.1):  # a value
-        for b in range(0, 15, 1):  # integer range is fine
-            for c in range(0, 20, 1):
-                st, actions = run_sim_3(100, a, b, c)
-                actions = np.array(actions)
-                st = np.array(st)
 
-                #num_idle = np.count_nonzero(actions == 0)
-                num_comp = np.count_nonzero(actions == 1)
-                num_uncomp = np.count_nonzero(actions == 2)
-                num_instable = 0
+    # Attach extra args for worker
+    params_with_args = [(a, b, c, num_steps, lambda1, lambda2) for (a, b, c) in param_grid]
 
-                for i in st:
-                    if not i == 0:
-                        num_instable = num_instable + i
-
-                cost = lambda1 * num_comp + lambda2 * num_uncomp + num_instable
-                mean_val = st.mean()
-                most_common_val = find_most_common(st)
-                results.append({
-                    'a': a,
-                    'b': b,
-                    'c': c,
-                    'mean': mean_val,
-                    'most_common': most_common_val,
-                    'cost' : cost
-                })
+    with ProcessPoolExecutor(max_workers=max_procs) as executor:
+        futures = {executor.submit(worker, p): p for p in params_with_args}
+        for future in tqdm(as_completed(futures), total=total, desc="Parameter sweep", unit="combos"):
+            results.append(future.result())
 
     sorted_results_AoSI = sorted(results, key=lambda r: r['mean'])
     sorted_results_cost = sorted(results, key=lambda r: r['cost'])
+    sorted_msg_cost = sorted(results, key=lambda r: r['msg cost'])
 
-    # Normalize mean and cost to [0, 1] range for balanced scoring
-    means = np.array([r['mean'] for r in results])
-    costs = np.array([r['cost'] for r in results])
-    mean_norm = (means - means.min()) / (means.max() - means.min())
-    cost_norm = (costs - costs.min()) / (costs.max() - costs.min())
-    combined_scores = mean_norm + cost_norm
-
-    for i, r in enumerate(results):
-        r['combined_score'] = combined_scores[i]
-    sorted_results_combined = sorted(results, key=lambda r: r['combined_score'])
-
-    print("*Best values by AoSI:")
+    print("#* Best values by AoSI:")
     for r in sorted_results_AoSI[:10]:
-        print(f"a, b, c = {r['a']:.1f}, {r['b']}, {r['c']} #→ mean={r['mean']:.3f}, most_common={r['most_common']}, cost = {r['cost']}")
-    print("\n*Best values by Cost:")
+        print(f"# a, b, c = {r['a']:.1f}, {r['b']}, {r['c']} "
+              f"# → mean={r['mean']:.3f}, most_common={r['most_common']}, cost={r['cost']}")
+
+    print("\n#* Best values by Cost:")
     for r in sorted_results_cost[:10]:
-        print(f"a, b, c = {r['a']:.1f}, {r['b']}, {r['c']} #→ mean={r['mean']:.3f}, most_common={r['most_common']}, cost = {r['cost']}")
-    print("\n*Top 10 most balanced values (mean and cost):")
-    for r in sorted_results_combined[:10]:
-        print(f"a, b, c = {r['a']:.1f}, {r['b']}, {r['c']}  #→ mean={r['mean']:.3f}, cost={r['cost']}, combined_score={r['combined_score']:.3f}")
+        print(f"# a, b, c = {r['a']:.1f}, {r['b']}, {r['c']} "
+              f"# → mean={r['mean']:.3f}, most_common={r['most_common']}, cost={r['cost']}")
 
+    print("\n#* Top 10 for message cost (mean and cost):")
+    for r in sorted_msg_cost[:10]:
+        print(f"# a, b, c = {r['a']:.1f}, {r['b']}, {r['c']} "
+              f"# → mean={r['mean']:.3f}, cost={r['cost']}")
 
-    return sorted_results_AoSI, sorted_results_cost, sorted_results_combined
+    return (
+        sorted_results_AoSI[0]['a'], sorted_results_AoSI[0]['b'], sorted_results_AoSI[0]['c'],
+        sorted_results_cost[0]['a'], sorted_results_cost[0]['b'], sorted_results_cost[0]['c'],
+        sorted_msg_cost[0]['a'], sorted_msg_cost[0]['b'], sorted_msg_cost[0]['c']
+    )
 
 
 
@@ -659,7 +677,7 @@ if __name__ == "__main__":
     else:
         fun = "error"
 
-    num_steps = 100
+    num_steps = 10000
     n = 50
     if should_save:
         save_folder_timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -678,7 +696,8 @@ if __name__ == "__main__":
 
         avgs = np.zeros_like(range(0,n), dtype=float)
         #you can run V optimizer and then just copy paste the exact thing here
-        a,b,c = 0.5, 2, 0
+        #a,b,c = 0.5, 2, 0
+        a,b,c = 1,1,0
         #AoSI
         #a, b, c = 4.7, 12, 14 #→ mean=0.267, most_common=0, cost = 331
         #a, b, c = 2.7, 4, -6 #→ mean = 0.267, most_common = 0, cost = 204
@@ -689,6 +708,9 @@ if __name__ == "__main__":
         #a, b, c = 0.0, 4, -2 #→ mean = 1.040, most_common = 0, cost = 95
         #a, b, c = 2.9, 0, -10 #→ mean = 1.010, most_common = 0, cost = 95
         #a, b, c = 2.7, 0, 5 #→ mean = 1.040, most_common = 0, cost = 97
+
+        #a, b, c = 12.4, 0.7, 6 #→ mean=0.181, most_common=0, cost = 61812
+        #a, b, c = 1.1, 0.7, 10 #→ mean=1.510, most_common=0, cost = 24169
 
 
 
