@@ -10,6 +10,12 @@ The code models a system that can be in either a **stable** (AOSI = 0) or **unst
 
 The core objective is to **minimize a cost function** that considers both the energy expended on control actions and the "cost" of being in an unstable state (represented by the AOSI value).
 
+Overall, 4 classes are provided:
+-**thesis.py** was used to reproduce the results from the paper by Kriouile et al., as well as the stability calculation for it
+-**plotter.py** Can execute one policy at a time and provide comprehencive results about it. Such as the exact AoSI run, the distribution, or the evolution of the cost, over both 1 and multiple runs as an average
+-**AllInOne.py** can create comparisons between the 3 models, as well as optimize for V functions.
+-**Run_multiple.py** can execute the AllInOne.py class multiple times, while changing the random seed, and time length. This makes it easier to run many long simulations in series and reduces the time you have to spend changing values.
+
 ---
 
 ## ✨ Features
@@ -41,13 +47,17 @@ The core objective is to **minimize a cost function** that considers both the en
 | `rho`             | Probability a message is successfully decoded                                                    |
 | `p`               | Probability system stabilizes after receiving compressed message                                 |
 | `q`               | Probability system stabilizes after receiving uncompressed message                               |
-| `lambda1`         | Energy cost for sending a compressed message                                                    |
-| `lambda2`         | Energy cost for sending an uncompressed message                                                 |
-| `V_val`           | Constant multiplier used internally for Lyapunov function scaling (not final cost)              |
+| `lambda1`         | Energy cost for sending a compressed message                                                     |
+| `lambda2`         | Energy cost for sending an uncompressed message                                                  |
+| `V_val`           | Constant multiplier used internally for Lyapunov function scaling (not final cost)               |
 | `stabilityMargine`| Penalty weight in Lyapunov drift calculation influencing stability preference                    |
-| `RANDOM_SEED`     | Seed for RNG. Set to `None` to disable fixed seeding                                            |
-| `h`               | Exponent used in Lyapunov function variant                                                     |
-| `mode`            | Simulation mode selector (see below)                                                           |
+| `RANDOM_SEED`     | Seed for RNG. Set to `None` to disable fixed seeding                                             |
+| `h`               | Exponent used in Lyapunov function variant                                                       |
+| `mode`            | Simulation mode selector (see below)                                                             |
+| `show_all_plots`  | Shows a more detailed selection of plots                                                         |
+| `should_save   `  | Automatically save the main plots. Some still need to be saved manually                          |
+| `dynamic`         | Setting this to true will result in a dynamic simulation                                         |
+| `cpu_fraction`    | Parameter for find_optimal_V: determines how much CPU power should be used, default 80%          |
 
 ---
 
@@ -57,9 +67,9 @@ The core objective is to **minimize a cost function** that considers both the en
 |-------|-------------------------------------------------------------|
 | `-1`  | Find optimal Lyapunov parameters `a, b, c`                  |
 | `0`   | Debugging mode running `run_sim`                            |
-| `1`   | Run G-function based simulation (`run_sim_1`)                |
-| `2`   | Run F-function based simulation (`run_sim_2`)                |
-| `3`   | Run Lyapunov drift based simulation (`run_sim_3`)            |
+| `1`   | Run G-function based simulation (`run_sim_1`)               |
+| `2`   | Run F-function based simulation (`run_sim_2`)               |
+| `3`   | Run Lyapunov drift based simulation (`run_sim_3`)           |
 
 ---
 
