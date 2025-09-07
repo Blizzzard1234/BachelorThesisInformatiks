@@ -1,5 +1,6 @@
 import math
 
+import matplotlib
 import numpy as np
 import matplotlib.pyplot as plt
 import random
@@ -32,7 +33,7 @@ should_save = True
 numeric_calculation = False
 MAX_I = 10000
 mode = 3 #-1 = find the optimal V value, 0 = paper, 1 = with F function, 2 = with G function, 3 = with Lyapunov drift
-
+matplotlib.use("Agg")
 
 
 # Derived constants (stable === AOIS = 0; unstable === AOIS > 0)
@@ -170,9 +171,9 @@ def pick_lyapunov(st,a,b,c):
     ly = V(st,a,b,c)
 
     #This should give the expected |E value
-    vals[0] = ((V(st+1,a,b,c) - ly) + (st +1) * stabilityMargine) * prs[0] + (V(0,a,b,c) - ly) * (1 - prs[0])
-    vals[1] = ((V(st+1,a,b,c) - ly) + lambda1 * V_val + (st +1)* stabilityMargine) * prs[1] + (V(0,a,b,c) - ly + lambda1 * V_val) * (1 - prs[1])
-    vals[2] = ((V(st+1,a,b,c) - ly) + lambda2 * V_val + (st +1)* stabilityMargine) * prs[2] + (V(0,a,b,c) - ly + lambda2 * V_val) * (1 - prs[2])
+    vals[0] = ((V(st+1,a,b,c) - ly)) * prs[0] + (V(0,a,b,c) - ly) * (1 - prs[0])
+    vals[1] = ((V(st+1,a,b,c) - ly)) * prs[1] + (V(0,a,b,c) - ly) * (1 - prs[1])+ lambda1
+    vals[2] = ((V(st+1,a,b,c) - ly)) * prs[2] + (V(0,a,b,c) - ly ) * (1 - prs[2])+ lambda2
 
 
 
@@ -677,7 +678,7 @@ if __name__ == "__main__":
     else:
         fun = "error"
 
-    num_steps = 10000
+    num_steps = 100
     n = 50
     if should_save:
         save_folder_timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -687,7 +688,7 @@ if __name__ == "__main__":
 
     if mode < 0:
         if mode == -1:
-            find_optimal_V()
+            find_optimal_V(num_steps)
 
 
 
@@ -697,24 +698,34 @@ if __name__ == "__main__":
         avgs = np.zeros_like(range(0,n), dtype=float)
         #you can run V optimizer and then just copy paste the exact thing here
         #a,b,c = 0.5, 2, 0
-        a,b,c = 1,1,0
-        #AoSI
-        #a, b, c = 4.7, 12, 14 #→ mean=0.267, most_common=0, cost = 331
-        #a, b, c = 2.7, 4, -6 #→ mean = 0.267, most_common = 0, cost = 204
-        #a, b, c = 3.5, 7, 0 #→ mean = 0.267, most_common = 0, cost = 201
-        #a, b, c = 1.6, 7, -9# → mean = 0.277, most_common = 0, cost = 212
+        #a, b, c = 2.6, 1.0, 0 # → mean=1.389, most_common=0, cost=18333
+        # a, b, c = 19.8, 5.3, 0 # → mean=0.323, most_common=0, cost=63231
+        # * Best values by AoSI:
+        #a, b, c = 19.2, 5.0, 0 # → mean=0.255, most_common=0, cost=6255
+        # a, b, c = 18.3, 3.2, 0 # → mean=0.256, most_common=0, cost=6256
+        # a, b, c = 18.3, 5.5, 0 # → mean=0.259, most_common=0, cost=6259
+        # a, b, c = 18.4, 9.700000000000001, 0 # → mean=0.261, most_common=0, cost=6261
+        # a, b, c = 19.7, 1.1, 0 # → mean=0.269, most_common=0, cost=6269
+
         #Cost
-        #a, b, c = 1.2, 1, 2 #→ mean=1.119, most_common=0, cost = 183
-        #a, b, c = 0.0, 4, -2 #→ mean = 1.040, most_common = 0, cost = 95
-        #a, b, c = 2.9, 0, -10 #→ mean = 1.010, most_common = 0, cost = 95
-        #a, b, c = 2.7, 0, 5 #→ mean = 1.040, most_common = 0, cost = 97
+        # * Best values by Cost:
+        #a, b, c = 1.1, 1.6, 0 # → mean=1.199, most_common=0, cost=1552
+        # a, b, c = 3.0, 1.1, 0 # → mean=1.035, most_common=0, cost=1668
+        # a, b, c = 1.4, 1.2000000000000002, 0 # → mean=1.437, most_common=0, cost=1672
+        # a, b, c = 3.8, 0.6, 0 # → mean=1.294, most_common=0, cost=1681
+        # a, b, c = 1.9, 1.1, 0 # → mean=1.295, most_common=0, cost=1684
+        # a, b, c = 1.5, 1.3000000000000003, 0 # → mean=1.311, most_common=0, cost=1700
+        # a, b, c = 5.7, 0.30000000000000004, 0 # → mean=1.315, most_common=0, cost=1712
+        # a, b, c = 0.5, 2.2, 0 # → mean=1.265, most_common=0, cost=1716
+        # a, b, c = 0.8, 1.8000000000000003, 0 # → mean=1.293, most_common=0, cost=1716
+        # a, b, c = 0.1, 2.9000000000000004, 0 # → mean=1.420, most_common=0, cost=1717
 
-        #a, b, c = 12.4, 0.7, 6 #→ mean=0.181, most_common=0, cost = 61812
-        #a, b, c = 1.1, 0.7, 10 #→ mean=1.510, most_common=0, cost = 24169
-
-
-
-
+        # * Top 10 for message cost (mean and cost):
+        a, b, c = 0.1, 0.1, 0 # → mean=2.185, cost=2187
+        # a, b, c = 0.1, 0.2, 0 # → mean=2.603, cost=2606
+        # a, b, c = 0.1, 0.30000000000000004, 0 # → mean=2.238, cost=2240
+        # a, b, c = 0.1, 0.4, 0 # → mean=2.445, cost=2447
+        # a, b, c = 0.1, 0.5, 0 # → mean=2.281, cost=2283
 
         arr_cost = np.zeros((num_steps, 0), dtype=np.float32)
         arr_aosi = np.zeros((num_steps, 0), dtype=np.float32)

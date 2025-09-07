@@ -1,5 +1,8 @@
 import math
+import sys
 from collections import deque
+
+import matplotlib
 import numpy as np
 import matplotlib.pyplot as plt
 import random
@@ -23,18 +26,19 @@ lambda2 = 6  # Energy cost for uncompressed
 V_val = 1 # a constant multiplied with all lambda, except for cost calculation. this will only
 # effect the next step calculation, but not the calculation of the final cost, so it is only a
 #temporary factor to help calculations
-stabilityMargine = 1
-RANDOM_SEED = 123545673 # Change or set to None to disable fixed seeding
+stabilityMargine = 0
+RANDOM_SEED = 1585645 # Change or set to None to disable fixed seeding
 h = 0 # variant exponent
 MAX_I = 100000  # Should be large enough to approximate infinite sums
-
 #should it be computed numerically (sum from min -> min + MAX_I) => True; should be calculated using the closed_form version like given in the paper => False
 numeric_calculation = False
 show_all_plots = False
 should_save = True
-mode = 3 #-1 = find the optimal V value, 0 = debugging, 1 = with G function, 2 = with F function, 3 = with Lyapunov drift
 dynamic = False
 
+#dont edit this
+savedynamic = False
+matplotlib.use("Agg")
 
 # Derived constants (stable === AOIS = 0; unstable === AOIS > 0)
 a = r1                          #unstable & IDLE
@@ -44,23 +48,34 @@ d = 1 - r0                      #stable & IDLE
 e = (1 - r0) * (1 - rho * p)    #stable & Compressed
 f = (1 - r0) * ((1 - rho) + rho * (1 - q) )      #stable &  Uncompressed  this is not the same as the paper, since we also have the propability that we get something
 # and deconde it, but it doesnt lead to a stable state ((1-r0) * rho * (1 - q))
-
+queue0 = deque(maxlen=100)
+queue1 = deque(maxlen=100)
+queue2 = deque(maxlen=100)
 rng = random.Random()
 ######################### current stuff
 def reset_random():
     global rng
     rng = random.Random(RANDOM_SEED)
+    np.random.seed(RANDOM_SEED)
 
+history_r1, history_r0, history_rho, history_p, history_q = [], [], [], [], []
 
 def change_prob():
     global r1,r0,rho,p,q
-    r1 = max(0, r1 + np.random.uniform(-0.005, 0.005))
-    r0 = max(0, r0 + np.random.uniform(-0.005, 0.005))
-    rho = max(0, rho + np.random.uniform(-0.005, 0.005))
-    p = max(0, p + np.random.uniform(-0.005, 0.005))
-    q = max(p, q + np.random.uniform(-0.005, 0.005))
+    r1 = min(1, max(0, r1 + np.random.uniform(-0.005, 0.005)))
+    r0 = min(1, max(0, r0 + np.random.uniform(-0.005, 0.005)))
+    rho = min(1, max(0, rho + np.random.uniform(-0.005, 0.005)))
+    p = min(1, max(0, p + np.random.uniform(-0.005, 0.005)))
+    q = min(1, max(p, min(1, q + np.random.uniform(-0.005, 0.005))))
+    if savedynamic:
+        history_r1.append(r1)
+        history_r0.append(r0)
+        history_rho.append(rho)
+        history_p.append(p)
+        history_q.append(q)
+    # q >= p
 # this function calculates the next step. it uses the F function
-def get_transition_probs(st):
+def get_transition_probs(st,t=0):
     if not dynamic:
         if st == 0:
             return {
@@ -165,7 +180,7 @@ def pick_lyapunov(st,a,b,c):
     ly = V(st,a,b,c)
 
     #This should give the expected |E value
-    vals[0] = ((V(st+1,a,b,c) - ly) + (st +1) * stabilityMargine) * prs[0] + (V(0,a,b,c) - ly) * (1 - prs[0])
+    vals[0] = (( V(st+1,a,b,c) - ly) +(st +1) * stabilityMargine) * prs[0] + (V(0,a,b,c) - ly) * (1 - prs[0])
     vals[1] = ((V(st+1,a,b,c) - ly) + lambda1 * V_val + (st +1)* stabilityMargine) * prs[1] + (V(0,a,b,c) - ly + lambda1 * V_val) * (1 - prs[1])
     vals[2] = ((V(st+1,a,b,c) - ly) + lambda2 * V_val + (st +1)* stabilityMargine) * prs[2] + (V(0,a,b,c) - ly + lambda2 * V_val) * (1 - prs[2])
 
@@ -182,7 +197,9 @@ def pick_lyapunov(st,a,b,c):
 def run_sim (numruns = 1000):
     st = 0
     dt = 0
-
+    queue0.append(1 - r0)
+    queue1.append((1 - r0) * (1 - rho * p))
+    queue2.append((1 - r0) * (1 - rho * q))
     n1 = (lambda1 / (r1 * rho * p)) - 1
     n2 = ((lambda2 - lambda1) / (r1 * rho * (q - p))) - 1
 
@@ -214,7 +231,9 @@ def run_sim_1 (numruns = 1000):
     S_history = [0]  # Initialize history with the starting state
     action_history = []
     st = 0
-
+    queue0.append(1 - r0)
+    queue1.append((1 - r0) * (1 - rho * p))
+    queue2.append((1 - r0) * (1 - rho * q))
     for t in range(numruns):
         # 1. Determine the optimal action for the current state S(t)
         action, _ = determin_next_G(st)
@@ -234,7 +253,9 @@ def run_sim_2 (numruns = 1000):
     S_history = [0]  # Initialize history with the starting state
     action_history = []
     st = 0
-
+    queue0.append(1 - r0)
+    queue1.append((1 - r0) * (1 - rho * p))
+    queue2.append((1 - r0) * (1 - rho * q))
     for t in range(numruns):
         # 1. Determine the optimal action for the current state S(t)
         action, _ = determin_next_F(st)
@@ -250,9 +271,7 @@ def run_sim_2 (numruns = 1000):
 
     return S_history, action_history
 
-queue0 = deque(maxlen=100)
-queue1 = deque(maxlen=100)
-queue2 = deque(maxlen=100)
+
 def run_sim_3(num_runs, a = 0.5,  b = 2, c = 0):
     S_history = [0]  # Initialize history with the starting state
     action_history = []
@@ -603,6 +622,9 @@ def simulate_paper(n):
 def sim_paper(num_steps):
     reset_random()
     n = 1
+    queue0.append(1 - r0)
+    queue1.append((1 - r0) * (1 - rho * p))
+    queue2.append((1 - r0) * (1 - rho * q))
     avgs = np.zeros_like(range(0, n), dtype=float)
     for i in range(n):
         S_states, actions = simulate_paper(num_steps)
@@ -1032,7 +1054,6 @@ def find_optimal_V(num_steps, cpu_fraction=0.8):
         np.arange(0.1, 10, 0.1),
         [0]
     ))
-
     total = len(param_grid)
     max_procs = max(1, math.floor(os.cpu_count() * cpu_fraction))
     results = []
@@ -1048,6 +1069,11 @@ def find_optimal_V(num_steps, cpu_fraction=0.8):
     sorted_results_AoSI = sorted(results, key=lambda r: r['mean'])
     sorted_results_cost = sorted(results, key=lambda r: r['cost'])
     sorted_msg_cost = sorted(results, key=lambda r: r['msg cost'])
+    battery = 0
+    if not battery == 0:
+        sorted_results_AoSI = [item for item in sorted_results_AoSI if item['msg cost'] < battery]
+        sorted_results_cost = [item for item in sorted_results_cost if item['msg cost'] < battery]
+        sorted_msg_cost = [item for item in sorted_msg_cost if item['msg cost'] < battery]
 
     print("#* Best values by AoSI:")
     for r in sorted_results_AoSI[:10]:
@@ -1110,7 +1136,12 @@ def plot_state_comparison(states_list, labels, name="Comparison"):
 
 
 if __name__ == "__main__":
-    num_steps = 100000
+    if len(sys.argv) == 1:
+        num_steps = 10000
+    else:
+        num_steps = int(sys.argv[1])
+        if len(sys.argv) == 3:
+            RANDOM_SEED = int(sys.argv[2])
     if should_save:
         save_folder_timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         SAVE_DIR = f'figures/{save_folder_timestamp}_timesteps_{num_steps}'
@@ -1221,14 +1252,14 @@ if __name__ == "__main__":
     ax.set_ylabel('Normalized Value')
     ax.set_title(f'Metric Comparison (Normalized Per Metric)')
     ax.legend()
-    ax.set_ylim(0, 1.2)
+    ax.set_ylim(0, np.max(data)/num_steps+0.5)
     plt.grid(axis='y', linestyle='--', alpha=0.5)
     plt.tight_layout()
     if should_save:
-        filename = os.path.join(SAVE_DIR, f"Metric Comparison (Normalized Per Metric) most important.png")
+        filename = os.path.join(SAVE_DIR, f"Metric Comparison (Normalized Per Metric) most important; {num_steps} steps.png")
         plt.savefig(filename)
         print(f"Saved: {filename}")
-    plt.show()
+    plt.close()
 
     if show_all_plots:
         ######### INDIVIDUAL PLOTS PER METRIC
@@ -1248,7 +1279,7 @@ if __name__ == "__main__":
             plt.tight_layout()
             plt.show()
 
-    plot_state_comparison([states1,states2,states4],  labels=["Paper", "G-Function", "Lyapunov Function"], name = "Paper, G-func, Lyapunov")
+    #plot_state_comparison([states1,states2,states4],  labels=["Paper", "G-Function", "Lyapunov Function"], name = "Paper, G-func, Lyapunov")
     print("Comparing 4 different values")
 
     AoSIp, costp,true_costp = AoSI1, cost1,true_cost1
@@ -1261,7 +1292,7 @@ if __name__ == "__main__":
     cost_through_aosip = costp - true_costp
 
     a, b, c = 0.5, 2, 0
-    fun1 = f'{a}x^{b}'
+    fun1 = f'{a:.1f}x^{b}'
     AoSI1, cost1, true_cost1, states4 = sim_lya(num_steps, a, b, c)
     print(f"optimisation for {fun1} done")
     avg_cost1 = cost1 / num_steps
@@ -1278,12 +1309,13 @@ if __name__ == "__main__":
 
 
     ################################### Replace the V values here (Minimal AoSI)
-    a, b, c = 17.7, 2.1, 0 # → mean=0.340, most_common=0, cost=634039
-    fun2 = f'{a}x^{b}'
+    a, b, c = 18.8, 0.6, 0 # → mean=0.318, most_common=0, cost=63177
+
     if compute_new_V:
         a = a1
         b = b1
         c = c1
+    fun2 = f'{a:.1f}x^{b:.1f}'
     #a, b, c = 1, 1, 0
     AoSI2, cost2, true_cost2, states5 = sim_lya(num_steps, a, b, c)
     print(f"optimisation for {fun2} done")
@@ -1291,26 +1323,29 @@ if __name__ == "__main__":
     avg_msg_cost2 = true_cost2 / num_steps
     cost_through_aosi2 = cost2 - true_cost2
     ################################### Replace the V values here (Minimal Cost)
-    a, b, c = 3.9, 0.2, 0 # → mean=1.432, most_common=0, cost=187116
-    fun3 = f'{a}x^{b}'
+    savedynamic = True
+    a, b, c = 2.2, 1.0, 0 # → mean=1.400, most_common=0, cost=18303
+
     if compute_new_V:
         a = a2
         b = b2
         c = c2
-
+    fun3 = f'{a:.1f}x^{b:.1f}'
     AoSI3, cost3, true_cost3, states6 = sim_lya(num_steps, a, b, c)
     print(f"optimisation for {fun3} done")
     avg_cost3 = cost3 / num_steps
     avg_msg_cost3 = true_cost3 / num_steps
     cost_through_aosi3 = cost3 - true_cost3
+
+    savedynamic = False
     ################################### Replace the V values here (Balanced)
-    a, b, c = 0.1, 0.2, 0 # → mean=2.058, cost=212307
-    fun4 = f'{a}x^{b}'
+    a, b, c = 0.1, 0.1, 0 # → mean=2.423, cost=24229
+
     if compute_new_V:
         a = a3
         b = b3
         c = c3
-
+    fun4 = f'{a:.1f}x^{b:.1f}'
     AoSI4, cost4, true_cost4, states7 = sim_lya(num_steps, a, b, c)
     print(f"optimisation for {fun4} done")
     avg_cost4 = cost4 / num_steps
@@ -1374,15 +1409,32 @@ if __name__ == "__main__":
     ax.set_xticklabels(labels)
     ax.set_ylabel(f"Average over {num_steps} time steps")
     ax.set_title("Comparison of Metrics Across Methods")
-    ax.set_ylim(0,7)
+    ax.set_ylim(0, 12)
     ax.legend()
     plt.grid(axis='y', linestyle='--', alpha=0.5)
     plt.tight_layout()
     if should_save:
-        filename = os.path.join(SAVE_DIR, f"Comparison of Metrics Across Methods with different Vs.png")
+        filename = os.path.join(SAVE_DIR, f"Comparison of Metrics Across Methods with different Vs; {num_steps} steps.png")
         plt.savefig(filename)
         print(f"Saved: {filename}")
-    plt.show()
+    plt.close()
 
-    plot_state_comparison([states1, states2, states4,states5, states6, states7], labels=["Paper", "G-Function", "Lyapunov Function", "Lyapunov Minimize AoSI", "Lyapunov Minimize Cost", "Lyapunov Minimize msg. cost"],
-                          name="All in one")
+    #plot_state_comparison([states1, states2, states4,states5, states6, states7], labels=["Paper", "G-Function", "Lyapunov Function", "Lyapunov Minimize AoSI", "Lyapunov Minimize Cost", "Lyapunov Minimize msg. cost"],name="All in one")
+
+    if dynamic:
+        plt.plot(history_r1, label="r1")
+        plt.plot(history_r0, label="r0")
+        plt.plot(history_rho, label="rho")
+        plt.plot(history_p, label="p")
+        plt.plot(history_q, label="q")
+
+        plt.xlabel("Timestep")
+        plt.ylabel("Probability")
+        plt.title("Evolution of Probabilities")
+        plt.legend()
+        if should_save:
+            filename = os.path.join(SAVE_DIR,
+                                    f"Evolution of probabilities; {num_steps} steps.png")
+            plt.savefig(filename)
+            print(f"Saved: {filename}")
+        plt.close()
